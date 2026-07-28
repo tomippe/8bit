@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>8BIT COIN HUNTER</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #111;
+      color: white;
+      font-family: monospace;
+    }
+
+    .game-container {
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      letter-spacing: 2px;
+    }
+
+    canvas {
+      display: block;
+      width: 640px;
+      max-width: 95vw;
+      height: auto;
+      border: 6px solid white;
+      background: black;
+
+      /* ドット絵をくっきり表示 */
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .info {
+      margin-top: 10px;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin: 8px 4px 0;
+      border: 4px solid white;
+      background: #222;
+      color: white;
+      font-family: monospace;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: white;
+      color: black;
+    }
+
+    #clearDataButton:hover {
+      background: #e53935;
+      border-color: #e53935;
+      color: white;
+    }
+
+    .account-panel {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 2px solid #444;
+      text-align: center;
+    }
+
+    .account-panel input {
+      width: 140px;
+      max-width: 40vw;
+      padding: 8px 10px;
+      margin: 4px;
+      border: 3px solid white;
+      background: #111;
+      color: white;
+      font-family: monospace;
+      font-size: 14px;
+    }
+
+    .account-status {
+      margin-top: 8px;
+      font-size: 14px;
+      color: #aaa;
+      min-height: 1.4em;
+    }
+
+    .account-status.ok {
+      color: #7ef9ff;
+    }
+
+    .account-status.error {
+      color: #ff706b;
+    }
+
+    #loggedInView,
+    #loggedOutView {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="game-container">
+  <h1>8BIT COIN HUNTER</h1>
+
+  <canvas id="gameCanvas" width="320" height="240"></canvas>
+
+  <div class="info">
+    矢印キー：移動　P：ポーズ　スペースキー：再スタート<br>
+    黄色いコインを集めろ！赤い敵には触れるな！<br>
+    コイン10個に1回くらい出る水色の星を取ると10秒間無敵！
+  </div>
+
+  <button id="restartButton">RESTART</button>
+  <button id="clearDataButton">データ削除</button>
+
+  <div class="account-panel">
+    <div id="loggedOutView">
+      <input id="usernameInput" type="text" placeholder="ユーザー名" autocomplete="username">
+      <input id="passwordInput" type="password" placeholder="パスワード" autocomplete="current-password">
+      <div>
+        <button id="loginButton" type="button">ログイン</button>
+        <button id="registerButton" type="button">新規登録</button>
+      </div>
+    </div>
+
+    <div id="loggedInView">
+      <div id="accountNameLabel">ログイン中: -</div>
+      <button id="logoutButton" type="button">ログアウト</button>
+    </div>
+
+    <div id="accountStatus" class="account-status"></div>
+  </div>
+</div>
+
+<script>
+  "use strict";
+
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+
+  const restartButton = document.getElementById("restartButton");
+  const clearDataButton = document.getElementById("clearDataButton");
+  const usernameInput = document.getElementById("usernameInput");
+  const passwordInput = document.getElementById("passwordInput");
+  const loginButton = document.getElementById("loginButton");
+  const registerButton = document.getElementById("registerButton");
+  const logoutButton = document.getElementById("logoutButton");
+  const loggedOutView = document.getElementById("loggedOutView");
+  const loggedInView = document.getElementById("loggedInView");
+  const accountNameLabel = document.getElementById("accountNameLabel");
+  const accountStatus = document.getElementById("accountStatus");
+
+  const WIDTH = canvas.width;
+  const HEIGHT = canvas.height;
+
+  const TILE_SIZE = 8;
+  const SCORE_BAR_HEIGHT = 16;
+  const HIGH_SCORE_KEY = "coinHunterHighScore";
+  const API_BASE = "api";
+
+  const keys = {};
+
+  let score = 0;
+  let highScore = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+  let highScoreAtStart = highScore;
+  let gameOver = false;
+  let confirmingClearData = false;
+  let paused = false;
+  let animationId = null;
+  let lastFrameTime = performance.now();
+  let invincibleRemainingMs = 0;
+  let starCooldownCoins = 0;
+  let loggedInUsername = null;
+
+  const INVINCIBLE_DURATION_MS = 10000;
+  const INVINCIBLE_ITEM_CHANCE = 0.1;
+  const STAR_COOLDOWN_COINS = 3;
+
+  const clearConfirmButtons = {
+    yes: { x: 70, y: 140, width: 70, height: 24 },
+    no: { x: 180, y: 140, width: 70, height: 24 }
+  };
+
+  /*
+   * プレイヤー
+   */
+  const player = {
+    x: 40,
+    y: 120,
+    width: 16,
+    height: 16,
+    speed: 2,
+    vx: 0,
+    vy: 0
+  };
+
+  /*
+   * コイン
+   */
+  const coin = {
+    x: 200,
+    y: 100,
+    width: 8,
+    height: 8
+  };
+
+  /*
+   * 無敵アイテム
+   */
+  const invincibleItem = {
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    active: false
+  };
+
+  /*
+   * 敵
+   */
+  let enemies = [];
+
+  /*
+   * キーボード操作
+   */
+  window.addEventListener("keydown", (event) => {
+    keys[event.key] = true;
+
+    const preventKeys = [
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      " "
+    ];
+
+    if (preventKeys.includes(event.key)) {
+      event.preventDefault();
+    }
+
+    if (event.key === " " && gameOver && !confirmingClearData) {
+      restartGame();
+    }
+
+    if (
+      (event.key === "p" || event.key === "P") &&
+      !gameOver &&
+      !confirmingClearData
+    ) {
+      paused = !paused;
+
+      if (paused) {
+        keys.ArrowUp = false;
+        keys.ArrowDown = false;
+        keys.ArrowLeft = false;
+        keys.ArrowRight = false;
+      }
+    }
+
+    if (confirmingClearData) {
+      if (event.key === "y" || event.key === "Y") {
+        executeClearSavedData();
+      }
+
+      if (event.key === "n" || event.key === "N" || event.key === "Escape") {
+        confirmingClearData = false;
+      }
+    }
+  });
+
+  window.addEventListener("keyup", (event) => {
+    keys[event.key] = false;
+  });
+
+  restartButton.addEventListener("click", () => {
+    if (confirmingClearData) {
+      return;
+    }
+
+    restartGame();
+  });
+
+  clearDataButton.addEventListener("click", () => {
+    confirmingClearData = true;
+  });
+
+  canvas.addEventListener("click", (event) => {
+    if (!confirmingClearData) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = WIDTH / rect.width;
+    const scaleY = HEIGHT / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+
+    if (hitClearConfirmButton(clearConfirmButtons.yes, x, y)) {
+      executeClearSavedData();
+      return;
+    }
+
+    if (hitClearConfirmButton(clearConfirmButtons.no, x, y)) {
+      confirmingClearData = false;
+    }
+  });
+
+  function hitClearConfirmButton(button, x, y) {
+    return (
+      x >= button.x &&
+      x <= button.x + button.width &&
+      y >= button.y &&
+      y <= button.y + button.height
+    );
+  }
+
+  /*
+   * 敵を作る
+   */
+  function createEnemy() {
+    const size = 16;
+    const minDistance = 80;
+    let x = 0;
+    let y = 0;
+    let attempts = 0;
+
+    do {
+      x = randomGridPosition(WIDTH - size);
+      y = randomGridPosition(HEIGHT - size);
+      attempts++;
+    } while (
+      attempts < 100 &&
+      (isTooClose(x, y, player.x, player.y, minDistance) ||
+        enemies.some((enemy) =>
+          isTooClose(x, y, enemy.x, enemy.y, minDistance)
+        ))
+    );
+
+    const enemy = {
+      x,
+      y,
+      width: size,
+      height: size,
+      speed: 0.5 + Math.random() * 0.8 + score * 0.02,
+      speedX: 0,
+      speedY: 0
+    };
+
+    setEnemyDirection(enemy);
+    enemies.push(enemy);
+  }
+
+  function isTooClose(x1, y1, x2, y2, minDistance) {
+    return (
+      Math.abs(x1 - x2) < minDistance &&
+      Math.abs(y1 - y2) < minDistance
+    );
+  }
+
+  /*
+   * 横・縦・斜めどれかの方向をセット
+   */
+  function setEnemyDirection(enemy, blocked = {}) {
+    const directions = [
+      { x: -1, y: 0 },
+      { x: 1, y: 0 },
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: -1 },
+      { x: 1, y: -1 },
+      { x: -1, y: 1 },
+      { x: 1, y: 1 }
+    ].filter((direction) => {
+      if (blocked.left && direction.x < 0) {
+        return false;
+      }
+
+      if (blocked.right && direction.x > 0) {
+        return false;
+      }
+
+      if (blocked.top && direction.y < 0) {
+        return false;
+      }
+
+      if (blocked.bottom && direction.y > 0) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const direction =
+      directions[Math.floor(Math.random() * directions.length)];
+
+    enemy.speedX = direction.x * enemy.speed;
+    enemy.speedY = direction.y * enemy.speed;
+  }
+
+  /*
+   * 8ピクセル単位のランダム位置
+   */
+  function randomGridPosition(maximum) {
+    const tiles = Math.floor(maximum / TILE_SIZE);
+    return Math.floor(Math.random() * tiles) * TILE_SIZE;
+  }
+
+  /*
+   * コインを別の場所へ移動
+   */
+  function moveCoin() {
+    let validPosition = false;
+
+    while (!validPosition) {
+      coin.x = randomGridPosition(WIDTH - coin.width);
+      /*
+       * スコア表示の下から置く
+       */
+      coin.y =
+        SCORE_BAR_HEIGHT +
+        randomGridPosition(HEIGHT - SCORE_BAR_HEIGHT - coin.height);
+
+      validPosition =
+        !enemies.some((enemy) => checkCollision(coin, enemy)) &&
+        !(
+          invincibleItem.active &&
+          checkCollision(coin, invincibleItem)
+        );
+    }
+  }
+
+  /*
+   * 無敵アイテムを出現させる
+   */
+  function spawnInvincibleItem() {
+    let validPosition = false;
+
+    while (!validPosition) {
+      invincibleItem.x = randomGridPosition(WIDTH - invincibleItem.width);
+      invincibleItem.y =
+        SCORE_BAR_HEIGHT +
+        randomGridPosition(
+          HEIGHT - SCORE_BAR_HEIGHT - invincibleItem.height
+        );
+
+      validPosition =
+        !checkCollision(invincibleItem, coin) &&
+        !checkCollision(invincibleItem, player) &&
+        !enemies.some((enemy) => checkCollision(invincibleItem, enemy));
+    }
+
+    invincibleItem.active = true;
+  }
+
+  /*
+   * プレイヤーの移動
+   */
+  function updatePlayer() {
+    const previousX = player.x;
+    const previousY = player.y;
+
+    if (keys.ArrowLeft) {
+      player.x -= player.speed;
+    }
+
+    if (keys.ArrowRight) {
+      player.x += player.speed;
+    }
+
+    if (keys.ArrowUp) {
+      player.y -= player.speed;
+    }
+
+    if (keys.ArrowDown) {
+      player.y += player.speed;
+    }
+
+    /*
+     * 画面外に出ないようにする
+     */
+    player.x = Math.max(
+      0,
+      Math.min(WIDTH - player.width, player.x)
+    );
+
+    player.y = Math.max(
+      0,
+      Math.min(HEIGHT - player.height, player.y)
+    );
+
+    player.vx = player.x - previousX;
+    player.vy = player.y - previousY;
+  }
+
+  /*
+   * プレイヤーが敵に向かって突っ込んでいるか
+   */
+  function isPlayerChargingEnemy(enemy) {
+    if (player.vx === 0 && player.vy === 0) {
+      return false;
+    }
+
+    const playerCenterX = player.x + player.width / 2;
+    const playerCenterY = player.y + player.height / 2;
+    const enemyCenterX = enemy.x + enemy.width / 2;
+    const enemyCenterY = enemy.y + enemy.height / 2;
+
+    return (
+      player.vx * (enemyCenterX - playerCenterX) +
+        player.vy * (enemyCenterY - playerCenterY) >
+      0
+    );
+  }
+
+  /*
+   * 敵の移動
+   */
+  function updateEnemies() {
+    for (const enemy of enemies) {
+      enemy.x += enemy.speedX;
+      enemy.y += enemy.speedY;
+
+      const hitLeft = enemy.x <= 0;
+      const hitRight = enemy.x + enemy.width >= WIDTH;
+      const hitTop = enemy.y <= 0;
+      const hitBottom = enemy.y + enemy.height >= HEIGHT;
+
+      if (hitLeft || hitRight || hitTop || hitBottom) {
+        enemy.x = Math.max(
+          0,
+          Math.min(WIDTH - enemy.width, enemy.x)
+        );
+        enemy.y = Math.max(
+          0,
+          Math.min(HEIGHT - enemy.height, enemy.y)
+        );
+
+        setEnemyDirection(enemy, {
+          left: hitLeft,
+          right: hitRight,
+          top: hitTop,
+          bottom: hitBottom
+        });
+      }
+    }
+  }
+
+  /*
+   * 当たり判定
+   */
+  function checkCollision(objectA, objectB) {
+    return (
+      objectA.x < objectB.x + objectB.width &&
+      objectA.x + objectA.width > objectB.x &&
+      objectA.y < objectB.y + objectB.height &&
+      objectA.y + objectA.height > objectB.y
+    );
+  }
+
+  /*
+   * コインと敵の当たり判定
+   */
+  function checkGameCollisions() {
+    /*
+     * コインを取得
+     */
+    if (checkCollision(player, coin)) {
+      score++;
+
+      if (score > highScore) {
+        highScore = score;
+        saveHighScore(highScore);
+      }
+
+      moveCoin();
+
+      /*
+       * 3枚取るごとに敵を追加
+       */
+      if (score % 3 === 0) {
+        createEnemy();
+      }
+
+      /*
+       * コイン10個に1回の確率で無敵アイテム出現
+       * 出現後は3回空けてから再抽選
+       */
+      if (starCooldownCoins > 0) {
+        starCooldownCoins--;
+      } else if (
+        !invincibleItem.active &&
+        Math.random() < INVINCIBLE_ITEM_CHANCE
+      ) {
+        spawnInvincibleItem();
+        starCooldownCoins = STAR_COOLDOWN_COINS;
+      }
+    }
+
+    /*
+     * 無敵アイテムを取得
+     */
+    if (
+      invincibleItem.active &&
+      checkCollision(player, invincibleItem)
+    ) {
+      invincibleItem.active = false;
+      invincibleRemainingMs = INVINCIBLE_DURATION_MS;
+    }
+
+    /*
+     * 敵に触れた
+     */
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (!checkCollision(player, enemies[i])) {
+        continue;
+      }
+
+      if (invincibleRemainingMs > 0) {
+        /*
+         * プレイヤーから突っ込んだときだけ敵を消す
+         */
+        if (isPlayerChargingEnemy(enemies[i])) {
+          enemies.splice(i, 1);
+        }
+      } else {
+        gameOver = true;
+        break;
+      }
+    }
+  }
+
+  /*
+   * 背景のドット模様
+   */
+  function drawBackground() {
+    ctx.fillStyle = "#101820";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.fillStyle = "#182c38";
+
+    for (let y = 0; y < HEIGHT; y += 16) {
+      for (let x = 0; x < WIDTH; x += 16) {
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+  }
+
+  /*
+   * プレイヤーを描く
+   */
+  function drawPlayer() {
+    const isInvincible = invincibleRemainingMs > 0;
+    const flashOn =
+      !isInvincible || Math.floor(performance.now() / 100) % 2 === 0;
+
+    if (!flashOn) {
+      ctx.globalAlpha = 0.35;
+    }
+
+    /*
+     * 本体
+     */
+    ctx.fillStyle = isInvincible ? "#7ef9ff" : "#2398ff";
+    ctx.fillRect(player.x, player.y, 16, 16);
+
+    /*
+     * 明るい部分
+     */
+    ctx.fillStyle = isInvincible ? "#ffffff" : "#70c8ff";
+    ctx.fillRect(player.x + 2, player.y + 2, 12, 4);
+
+    /*
+     * 目
+     */
+    ctx.fillStyle = "white";
+    ctx.fillRect(player.x + 3, player.y + 6, 4, 4);
+    ctx.fillRect(player.x + 9, player.y + 6, 4, 4);
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(player.x + 5, player.y + 8, 2, 2);
+    ctx.fillRect(player.x + 11, player.y + 8, 2, 2);
+
+    /*
+     * 足
+     */
+    ctx.fillStyle = isInvincible ? "#2bb8c8" : "#075da8";
+    ctx.fillRect(player.x + 2, player.y + 14, 4, 2);
+    ctx.fillRect(player.x + 10, player.y + 14, 4, 2);
+
+    ctx.globalAlpha = 1;
+
+    /*
+     * プレイヤー表示
+     */
+    ctx.fillStyle = isInvincible ? "#7ef9ff" : "#70c8ff";
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(
+      isInvincible ? "INVINCIBLE" : "PLAYER",
+      player.x + player.width / 2,
+      Math.max(SCORE_BAR_HEIGHT + 8, player.y - 1)
+    );
+    ctx.textAlign = "left";
+  }
+
+  /*
+   * コインを描く
+   */
+  function drawCoin() {
+    ctx.fillStyle = "#ffcc00";
+    ctx.fillRect(coin.x + 2, coin.y, 4, 8);
+    ctx.fillRect(coin.x, coin.y + 2, 8, 4);
+
+    ctx.fillStyle = "#fff17a";
+    ctx.fillRect(coin.x + 2, coin.y + 1, 2, 4);
+  }
+
+  /*
+   * 無敵アイテムを描く
+   */
+  function drawInvincibleItem() {
+    if (!invincibleItem.active) {
+      return;
+    }
+
+    const x = invincibleItem.x;
+    const y = invincibleItem.y;
+    const blink = Math.floor(performance.now() / 200) % 2 === 0;
+
+    ctx.fillStyle = blink ? "#7ef9ff" : "#ffffff";
+    ctx.fillRect(x + 4, y, 2, 10);
+    ctx.fillRect(x, y + 4, 10, 2);
+    ctx.fillRect(x + 2, y + 2, 6, 6);
+
+    ctx.fillStyle = "#2bb8c8";
+    ctx.fillRect(x + 4, y + 4, 2, 2);
+  }
+
+  /*
+   * 敵を描く
+   */
+  function drawEnemies() {
+    for (const enemy of enemies) {
+      ctx.fillStyle = "#e53935";
+      ctx.fillRect(enemy.x, enemy.y, 16, 16);
+
+      ctx.fillStyle = "#ff706b";
+      ctx.fillRect(enemy.x + 2, enemy.y + 2, 12, 4);
+
+      /*
+       * 怒った目
+       */
+      ctx.fillStyle = "white";
+      ctx.fillRect(enemy.x + 3, enemy.y + 7, 4, 3);
+      ctx.fillRect(enemy.x + 9, enemy.y + 7, 4, 3);
+
+      ctx.fillStyle = "black";
+      ctx.fillRect(enemy.x + 3, enemy.y + 7, 2, 2);
+      ctx.fillRect(enemy.x + 11, enemy.y + 7, 2, 2);
+
+      /*
+       * 足
+       */
+      ctx.fillStyle = "#8a1010";
+      ctx.fillRect(enemy.x + 1, enemy.y + 14, 5, 2);
+      ctx.fillRect(enemy.x + 10, enemy.y + 14, 5, 2);
+    }
+  }
+
+  /*
+   * スコア表示
+   */
+  function drawScore() {
+    ctx.font = "10px monospace";
+    ctx.textBaseline = "top";
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, WIDTH, 16);
+
+    ctx.fillStyle = "white";
+    ctx.fillText(`SCORE ${score}`, 6, 4);
+    ctx.fillText(`ENEMY ${enemies.length}`, 100, 4);
+
+    if (invincibleRemainingMs > 0) {
+      const seconds = Math.ceil(invincibleRemainingMs / 1000);
+      ctx.fillStyle = "#7ef9ff";
+      ctx.fillText(`INV ${seconds}s`, 170, 4);
+    }
+
+    const hiText = `HI ${highScore}`;
+    const isHighScoreUpdating = score > highScoreAtStart;
+
+    if (isHighScoreUpdating) {
+      const message = "ハイスコア更新中!!!";
+      const hiWidth = ctx.measureText(hiText).width;
+      const messageWidth = ctx.measureText(message).width;
+      const gap = 4;
+      const startX = WIDTH - 6 - hiWidth - gap - messageWidth;
+
+      ctx.fillStyle = "white";
+      ctx.fillText(hiText, startX, 4);
+      ctx.fillStyle = "#ffcc00";
+      ctx.fillText(message, startX + hiWidth + gap, 4);
+    } else {
+      ctx.fillStyle = "white";
+      ctx.fillText(hiText, 245, 4);
+    }
+  }
+
+  /*
+   * ゲームオーバー画面
+   */
+  function drawGameOver() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "#ff3b30";
+    ctx.font = "24px monospace";
+    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 24);
+
+    ctx.fillStyle = "white";
+    ctx.font = "12px monospace";
+    ctx.fillText(
+      `SCORE: ${score}`,
+      WIDTH / 2,
+      HEIGHT / 2 + 8
+    );
+
+    ctx.font = "10px monospace";
+    ctx.fillText(
+      "PRESS SPACE TO RESTART",
+      WIDTH / 2,
+      HEIGHT / 2 + 32
+    );
+
+    ctx.textAlign = "left";
+  }
+
+  /*
+   * データ削除の確認画面
+   */
+  function drawClearDataConfirm() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "white";
+    ctx.font = "11px monospace";
+    ctx.fillText(
+      "本当にこれまでのデータを削除しますか?",
+      WIDTH / 2,
+      HEIGHT / 2 - 20
+    );
+
+    drawClearConfirmButton(clearConfirmButtons.yes, "はい", "#e53935");
+    drawClearConfirmButton(clearConfirmButtons.no, "いいえ", "#555555");
+
+    ctx.fillStyle = "#aaaaaa";
+    ctx.font = "9px monospace";
+    ctx.fillText("Y: はい　N: いいえ", WIDTH / 2, HEIGHT / 2 + 55);
+
+    ctx.textAlign = "left";
+  }
+
+  function drawClearConfirmButton(button, label, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(button.x, button.y, button.width, button.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      label,
+      button.x + button.width / 2,
+      button.y + button.height / 2
+    );
+  }
+
+  /*
+   * ポーズ画面
+   */
+  function drawPause() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "#70c8ff";
+    ctx.font = "24px monospace";
+    ctx.fillText("PAUSED", WIDTH / 2, HEIGHT / 2 - 8);
+
+    ctx.fillStyle = "white";
+    ctx.font = "10px monospace";
+    ctx.fillText("PRESS P TO RESUME", WIDTH / 2, HEIGHT / 2 + 24);
+
+    ctx.textAlign = "left";
+  }
+
+  /*
+   * ゲーム状態の更新
+   */
+  function update() {
+    const now = performance.now();
+
+    if (gameOver || confirmingClearData || paused) {
+      lastFrameTime = now;
+      return;
+    }
+
+    const deltaMs = now - lastFrameTime;
+    lastFrameTime = now;
+
+    if (invincibleRemainingMs > 0) {
+      invincibleRemainingMs = Math.max(
+        0,
+        invincibleRemainingMs - deltaMs
+      );
+    }
+
+    updatePlayer();
+    updateEnemies();
+    checkGameCollisions();
+  }
+
+  /*
+   * 描画
+   */
+  function draw() {
+    drawBackground();
+    drawCoin();
+    drawInvincibleItem();
+    drawEnemies();
+    drawPlayer();
+    drawScore();
+
+    if (gameOver) {
+      drawGameOver();
+    }
+
+    if (paused && !confirmingClearData) {
+      drawPause();
+    }
+
+    if (confirmingClearData) {
+      drawClearDataConfirm();
+    }
+  }
+
+  /*
+   * メインループ
+   */
+  function gameLoop() {
+    update();
+    draw();
+
+    animationId = requestAnimationFrame(gameLoop);
+  }
+
+  /*
+   * 最初からやり直す
+   */
+  function restartGame() {
+    score = 0;
+    highScoreAtStart = highScore;
+    gameOver = false;
+    confirmingClearData = false;
+    paused = false;
+    invincibleRemainingMs = 0;
+    invincibleItem.active = false;
+    starCooldownCoins = 0;
+    lastFrameTime = performance.now();
+
+    player.x = 40;
+    player.y = 120;
+
+    enemies = [];
+
+    createEnemy();
+    moveCoin();
+  }
+
+  /*
+   * 保存データを削除
+   */
+  function executeClearSavedData() {
+    localStorage.removeItem(HIGH_SCORE_KEY);
+    highScore = 0;
+    highScoreAtStart = 0;
+    score = 0;
+    confirmingClearData = false;
+
+    if (loggedInUsername) {
+      apiRequest("score.php", { method: "DELETE" })
+        .then((data) => {
+          if (!data.ok) {
+            setAccountStatus(data.error || "削除に失敗しました", "error");
+            return;
+          }
+
+          setAccountStatus("アカウントのハイスコアを削除しました", "ok");
+        })
+        .catch(() => {
+          setAccountStatus("サーバーに接続できませんでした", "error");
+        });
+    }
+
+    restartGame();
+  }
+
+  /*
+   * アカウント / ハイスコア同期
+   */
+  function setAccountStatus(message, type) {
+    accountStatus.textContent = message;
+    accountStatus.className = "account-status";
+
+    if (type) {
+      accountStatus.classList.add(type);
+    }
+  }
+
+  function updateAccountView() {
+    if (loggedInUsername) {
+      loggedOutView.style.display = "none";
+      loggedInView.style.display = "block";
+      accountNameLabel.textContent = `ログイン中: ${loggedInUsername}`;
+    } else {
+      loggedOutView.style.display = "block";
+      loggedInView.style.display = "none";
+      accountNameLabel.textContent = "ログイン中: -";
+    }
+  }
+
+  async function apiRequest(path, options = {}) {
+    const { headers: customHeaders, ...rest } = options;
+
+    const response = await fetch(`${API_BASE}/${path}`, {
+      credentials: "same-origin",
+      ...rest,
+      headers: {
+        "Content-Type": "application/json",
+        ...(customHeaders || {})
+      }
+    });
+
+    let data = null;
+
+    try {
+      data = await response.json();
+    } catch (error) {
+      data = {
+        ok: false,
+        error: "サーバー応答を読めませんでした"
+      };
+    }
+
+    if (!response.ok && data && !data.error) {
+      data.error = `エラー (${response.status})`;
+    }
+
+    return data;
+  }
+
+  function applyHighScore(value, resetStart = false) {
+    highScore = Number(value) || 0;
+    localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+
+    if (resetStart || score === 0) {
+      highScoreAtStart = highScore;
+    }
+  }
+
+  async function syncHighScoreWithServer(preferredScore) {
+    const localScore = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+    const candidate = Math.max(localScore, Number(preferredScore) || 0);
+
+    const data = await apiRequest("score.php", {
+      method: "POST",
+      body: JSON.stringify({ highScore: candidate })
+    });
+
+    if (!data.ok) {
+      throw new Error(data.error || "同期に失敗しました");
+    }
+
+    applyHighScore(data.highScore, true);
+    return data.highScore;
+  }
+
+  function saveHighScore(value) {
+    localStorage.setItem(HIGH_SCORE_KEY, String(value));
+
+    if (!loggedInUsername) {
+      return;
+    }
+
+    apiRequest("score.php", {
+      method: "POST",
+      body: JSON.stringify({ highScore: value })
+    })
+      .then((data) => {
+        if (!data.ok) {
+          setAccountStatus(data.error || "同期に失敗しました", "error");
+          return;
+        }
+
+        if (typeof data.highScore === "number") {
+          highScore = data.highScore;
+          localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+        }
+      })
+      .catch(() => {
+        setAccountStatus("ハイスコアの同期に失敗しました", "error");
+      });
+  }
+
+  async function handleAuth(action) {
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+
+    if (!username || !password) {
+      setAccountStatus("ユーザー名とパスワードを入力してください", "error");
+      return;
+    }
+
+    setAccountStatus("通信中...");
+
+    try {
+      const data = await apiRequest(`auth.php?action=${action}`, {
+        method: "POST",
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!data.ok) {
+        setAccountStatus(data.error || "失敗しました", "error");
+        return;
+      }
+
+      loggedInUsername = data.username;
+      passwordInput.value = "";
+
+      await syncHighScoreWithServer(data.highScore);
+      updateAccountView();
+      setAccountStatus(
+        action === "register"
+          ? "アカウントを作成してログインしました"
+          : "ログインしました",
+        "ok"
+      );
+    } catch (error) {
+      setAccountStatus(
+        error.message || "サーバーに接続できませんでした",
+        "error"
+      );
+    }
+  }
+
+  async function handleLogout() {
+    setAccountStatus("通信中...");
+
+    try {
+      const data = await apiRequest("auth.php?action=logout", {
+        method: "POST",
+        body: "{}"
+      });
+
+      if (!data.ok) {
+        setAccountStatus(data.error || "ログアウトに失敗しました", "error");
+        return;
+      }
+
+      loggedInUsername = null;
+      updateAccountView();
+      setAccountStatus("ログアウトしました", "ok");
+    } catch (error) {
+      setAccountStatus("サーバーに接続できませんでした", "error");
+    }
+  }
+
+  async function restoreAccountSession() {
+    updateAccountView();
+
+    try {
+      const data = await apiRequest("auth.php?action=me", {
+        method: "GET"
+      });
+
+      if (!data.ok || !data.loggedIn) {
+        loggedInUsername = null;
+        updateAccountView();
+        return;
+      }
+
+      loggedInUsername = data.username;
+      await syncHighScoreWithServer(data.highScore);
+      updateAccountView();
+      setAccountStatus("アカウントのハイスコアを読み込みました", "ok");
+    } catch (error) {
+      loggedInUsername = null;
+      updateAccountView();
+    }
+  }
+
+  loginButton.addEventListener("click", () => {
+    handleAuth("login");
+  });
+
+  registerButton.addEventListener("click", () => {
+    handleAuth("register");
+  });
+
+  logoutButton.addEventListener("click", handleLogout);
+
+  passwordInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      handleAuth("login");
+    }
+  });
+
+  /*
+   * ゲーム開始
+   */
+  restartGame();
+  gameLoop();
+  restoreAccountSession();
+</script>
+
+</body>
+</html>
