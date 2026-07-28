@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.11">
+  <meta name="app-version" content="1.0.12">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -235,12 +235,15 @@
   const TILE_SIZE = 8;
   const SCORE_BAR_HEIGHT = 14;
   const HIGH_SCORE_KEY = "coinHunterHighScore";
+  const HIGH_SCORE_2P_KEY = "coinHunterHighScore2P";
   const API_BASE = "api";
 
   const keys = {};
 
   let score = 0;
-  let highScore = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+  let highScore1P = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+  let highScore2P = Number(localStorage.getItem(HIGH_SCORE_2P_KEY)) || 0;
+  let highScore = highScore1P;
   let highScoreAtStart = highScore;
   let gameOver = false;
   let confirmingClearData = false;
@@ -408,6 +411,7 @@
 
     twoPlayerMode = !twoPlayerMode;
     twoPlayerButton.textContent = twoPlayerMode ? "1P" : "2P";
+    refreshHighScoreForMode();
     restartGame();
   });
 
@@ -974,7 +978,9 @@
       ctx.fillText(`P2 ${seconds}`, 270, textY);
     }
 
-    const hiText = `HI ${highScore}`;
+    const hiText = twoPlayerMode
+      ? `HI2 ${highScore}`
+      : `HI ${highScore}`;
     const isHighScoreUpdating = score > highScoreAtStart;
 
     if (isHighScoreUpdating) {
@@ -1202,6 +1208,9 @@
    */
   function executeClearSavedData() {
     localStorage.removeItem(HIGH_SCORE_KEY);
+    localStorage.removeItem(HIGH_SCORE_2P_KEY);
+    highScore1P = 0;
+    highScore2P = 0;
     highScore = 0;
     highScoreAtStart = 0;
     score = 0;
@@ -1290,42 +1299,79 @@
     return data;
   }
 
-  function applyHighScore(value, resetStart = false) {
-    highScore = Number(value) || 0;
-    localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+  function refreshHighScoreForMode() {
+    highScore = twoPlayerMode ? highScore2P : highScore1P;
+    highScoreAtStart = highScore;
+  }
+
+  function applyHighScores(score1P, score2P, resetStart = false) {
+    if (score1P !== undefined && score1P !== null) {
+      highScore1P = Number(score1P) || 0;
+      localStorage.setItem(HIGH_SCORE_KEY, String(highScore1P));
+    }
+
+    if (score2P !== undefined && score2P !== null) {
+      highScore2P = Number(score2P) || 0;
+      localStorage.setItem(HIGH_SCORE_2P_KEY, String(highScore2P));
+    }
+
+    highScore = twoPlayerMode ? highScore2P : highScore1P;
 
     if (resetStart || score === 0) {
       highScoreAtStart = highScore;
     }
   }
 
-  async function syncHighScoreWithServer(preferredScore) {
-    const localScore = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
-    const candidate = Math.max(localScore, Number(preferredScore) || 0);
+  async function syncHighScoreWithServer(preferred1P, preferred2P) {
+    const local1P = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+    const local2P = Number(localStorage.getItem(HIGH_SCORE_2P_KEY)) || 0;
+    const candidate1P = Math.max(
+      local1P,
+      Number(preferred1P) || 0
+    );
+    const candidate2P = Math.max(
+      local2P,
+      Number(preferred2P) || 0
+    );
 
     const data = await apiRequest("score.php", {
       method: "POST",
-      body: JSON.stringify({ highScore: candidate })
+      body: JSON.stringify({
+        highScore: candidate1P,
+        highScore2P: candidate2P
+      })
     });
 
     if (!data.ok) {
       throw new Error(data.error || "同期に失敗しました");
     }
 
-    applyHighScore(data.highScore, true);
-    return data.highScore;
+    applyHighScores(data.highScore, data.highScore2P, true);
+    return data;
   }
 
   function saveHighScore(value) {
-    localStorage.setItem(HIGH_SCORE_KEY, String(value));
+    if (twoPlayerMode) {
+      highScore2P = value;
+      localStorage.setItem(HIGH_SCORE_2P_KEY, String(value));
+    } else {
+      highScore1P = value;
+      localStorage.setItem(HIGH_SCORE_KEY, String(value));
+    }
+
+    highScore = value;
 
     if (!loggedInUsername) {
       return;
     }
 
+    const payload = twoPlayerMode
+      ? { highScore2P: value }
+      : { highScore: value };
+
     apiRequest("score.php", {
       method: "POST",
-      body: JSON.stringify({ highScore: value })
+      body: JSON.stringify(payload)
     })
       .then((data) => {
         if (!data.ok) {
@@ -1333,10 +1379,7 @@
           return;
         }
 
-        if (typeof data.highScore === "number") {
-          highScore = data.highScore;
-          localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
-        }
+        applyHighScores(data.highScore, data.highScore2P, false);
       })
       .catch(() => {
         setAccountStatus("ハイスコアの同期に失敗しました", "error");
@@ -1369,7 +1412,7 @@
       passwordInput.value = "";
       setAuthPanelOpen(false);
 
-      await syncHighScoreWithServer(data.highScore);
+      await syncHighScoreWithServer(data.highScore, data.highScore2P);
       updateAccountView();
       setAccountStatus(
         action === "register"
@@ -1427,6 +1470,9 @@
 
       loggedInUsername = null;
       localStorage.removeItem(HIGH_SCORE_KEY);
+      localStorage.removeItem(HIGH_SCORE_2P_KEY);
+      highScore1P = 0;
+      highScore2P = 0;
       highScore = 0;
       highScoreAtStart = 0;
       score = 0;
@@ -1453,7 +1499,7 @@
       }
 
       loggedInUsername = data.username;
-      await syncHighScoreWithServer(data.highScore);
+      await syncHighScoreWithServer(data.highScore, data.highScore2P);
       updateAccountView();
       setAccountStatus("アカウントのハイスコアを読み込みました", "ok");
     } catch (error) {

@@ -32,7 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'me') {
         'ok' => true,
         'loggedIn' => true,
         'username' => $username,
-        'highScore' => (int) ($users[$username]['highScore'] ?? 0)
+        'highScore' => (int) ($users[$username]['highScore'] ?? 0),
+        'highScore2P' => (int) ($users[$username]['highScore2P'] ?? 0)
     ]);
 }
 
@@ -61,7 +62,8 @@ if ($action === 'register') {
 
     $users[$username] = [
         'passwordHash' => password_hash($password, PASSWORD_DEFAULT),
-        'highScore' => 0
+        'highScore' => 0,
+        'highScore2P' => 0
     ];
 
     saveUsers($users);
@@ -70,7 +72,8 @@ if ($action === 'register') {
     respond([
         'ok' => true,
         'username' => $username,
-        'highScore' => 0
+        'highScore' => 0,
+        'highScore2P' => 0
     ]);
 }
 
@@ -93,7 +96,8 @@ if ($action === 'login') {
     respond([
         'ok' => true,
         'username' => $username,
-        'highScore' => (int) ($users[$username]['highScore'] ?? 0)
+        'highScore' => (int) ($users[$username]['highScore'] ?? 0),
+        'highScore2P' => (int) ($users[$username]['highScore2P'] ?? 0)
     ]);
 }
 
