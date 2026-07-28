@@ -75,17 +75,49 @@ PY
     fi
 fi
 
+# 紹介ページ用 manifest.json（版表示）
+python3 - << PY
+import json
+from pathlib import Path
+version = "$VERSION"
+path = Path("manifest.json")
+data = {}
+if path.is_file():
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+if not isinstance(data, dict):
+    data = {}
+data["name"] = data.get("name") or "8BIT COIN HUNTER"
+data["version"] = version
+data["web_version"] = version
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(f"  ✓ manifest.json を v{version} に更新")
+PY
+
 if $NO_UPLOAD; then
     echo "  ℹ️  -noupload のため FTP をスキップ"
 else
-    # 公開物のみ（ユーザーDB・開発用は上げない）
+    # 公開物のみ（ユーザーDB・開発用は上げない）→ fuma.tomippe.jp
     ftp_upload_file "$SCRIPT_DIR/index.html" "8bit/index.html"
+    ftp_upload_file "$SCRIPT_DIR/manifest.json" "8bit/manifest.json"
     for f in "$SCRIPT_DIR"/api/*.php; do
         [ -f "$f" ] || continue
         ftp_upload_file "$f" "8bit/api/$(basename "$f")"
     done
     if [ -f "$SCRIPT_DIR/data/.htaccess" ]; then
         ftp_upload_file "$SCRIPT_DIR/data/.htaccess" "8bit/data/.htaccess"
+    fi
+
+    # 紹介ページが読む manifest → apps.tomippe.jp/8bit/manifest.json
+    APPS_SFTP="$(ftp_apps_sftp_json || true)"
+    if [ -n "${APPS_SFTP:-}" ]; then
+        echo ""
+        echo "🌐 紹介ページ用 manifest を apps.tomippe.jp へ..."
+        ftp_upload_file "$SCRIPT_DIR/manifest.json" "8bit/manifest.json" "$APPS_SFTP"
+    else
+        echo "  ⚠️  sftp-apps.json が無いため apps.tomippe.jp への manifest アップロードをスキップ"
     fi
 fi
 
@@ -112,3 +144,4 @@ echo ""
 echo "🎉 ${APP_NAME} v${VERSION} — 完了"
 echo "   公開: https://fuma.tomippe.jp/8bit/"
 echo "   紹介: ${WP_APP_PAGE_URL:-https://apps.tomippe.jp/8bit/}"
+echo "   manifest: https://apps.tomippe.jp/${APP_NAME}/manifest.json"

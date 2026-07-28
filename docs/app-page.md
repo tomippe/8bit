@@ -38,6 +38,9 @@
 ## 版番号
 
 - `version.txt`（いまのビルド対象版）。`./build.sh` 成功後にパッチ +1
+- `manifest.json`（`version` / `web_version`）→ 紹介ページの版表示用
+  - https://apps.tomippe.jp/8bit/manifest.json
+  - https://fuma.tomippe.jp/8bit/manifest.json
 - 履歴は ACF `app-versions`（`build-common/scripts/wp-append-app-version.py`）
 
 ## ローカル連携
