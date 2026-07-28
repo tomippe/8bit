@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.12">
+  <meta name="app-version" content="1.0.13">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -241,6 +241,7 @@
   const keys = {};
 
   let score = 0;
+  let score2 = 0;
   let highScore1P = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
   let highScore2P = Number(localStorage.getItem(HIGH_SCORE_2P_KEY)) || 0;
   let highScore = highScore1P;
@@ -478,7 +479,7 @@
       y,
       width: size,
       height: size,
-      speed: 0.5 + Math.random() * 0.8 + score * 0.02,
+      speed: 0.5 + Math.random() * 0.8 + totalScore() * 0.02,
       speedX: 0,
       speedY: 0
     };
@@ -729,20 +730,34 @@
     );
   }
 
+  function totalScore() {
+    return twoPlayerMode ? score + score2 : score;
+  }
+
+  function leadingScore() {
+    return twoPlayerMode ? Math.max(score, score2) : score;
+  }
+
   /*
    * コインと敵の当たり判定
    */
-  function onCoinCollected() {
-    score++;
+  function onCoinCollected(collector) {
+    if (collector === player2) {
+      score2++;
+    } else {
+      score++;
+    }
 
-    if (score > highScore) {
-      highScore = score;
+    const best = leadingScore();
+
+    if (best > highScore) {
+      highScore = best;
       saveHighScore(highScore);
     }
 
     moveCoin();
 
-    if (score % 3 === 0) {
+    if (totalScore() % 3 === 0) {
       createEnemy();
     }
 
@@ -764,7 +779,7 @@
 
     for (const target of activePlayers) {
       if (checkCollision(target, coin)) {
-        onCoinCollected();
+        onCoinCollected(target);
         break;
       }
     }
@@ -960,39 +975,53 @@
     ctx.fillRect(0, 0, WIDTH, SCORE_BAR_HEIGHT);
 
     const textY = SCORE_BAR_HEIGHT / 2;
+    const isHighScoreUpdating = leadingScore() > highScoreAtStart;
 
     ctx.fillStyle = "white";
-    ctx.fillText(`SCORE ${score}`, 4, textY);
-    ctx.fillText(`ENEMY ${enemies.length}`, 78, textY);
-    ctx.fillText(`TIME ${formatRunTime(runTimeMs)}`, 145, textY);
+
+    if (twoPlayerMode) {
+      ctx.fillText(`SC ${score}`, 4, textY);
+      ctx.fillStyle = "#81c784";
+      ctx.fillText(`2PSC ${score2}`, 52, textY);
+      ctx.fillStyle = "white";
+      ctx.fillText(`E ${enemies.length}`, 118, textY);
+      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 150, textY);
+    } else {
+      ctx.fillText(`SCORE ${score}`, 4, textY);
+      ctx.fillText(`ENEMY ${enemies.length}`, 78, textY);
+      ctx.fillText(`TIME ${formatRunTime(runTimeMs)}`, 145, textY);
+    }
 
     if (invincibleRemainingMs > 0) {
       const seconds = Math.ceil(invincibleRemainingMs / 1000);
       ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`P1 ${seconds}`, 230, textY);
+      ctx.fillText(`P1 ${seconds}`, twoPlayerMode ? 220 : 230, textY);
     }
 
     if (twoPlayerMode && invincibleRemainingMs2 > 0) {
       const seconds = Math.ceil(invincibleRemainingMs2 / 1000);
       ctx.fillStyle = "#81c784";
-      ctx.fillText(`P2 ${seconds}`, 270, textY);
+      ctx.fillText(`P2 ${seconds}`, 255, textY);
     }
 
     const hiText = twoPlayerMode
       ? `HI2 ${highScore}`
       : `HI ${highScore}`;
-    const isHighScoreUpdating = score > highScoreAtStart;
+    const hiWidth = ctx.measureText(hiText).width;
+    let cursorX = WIDTH - 4;
 
     if (isHighScoreUpdating) {
-      ctx.fillStyle = "#ffcc00";
       const message = "NEW!";
       const messageWidth = ctx.measureText(message).width;
-      ctx.fillText(message, WIDTH - 4 - messageWidth, textY);
-    } else {
-      ctx.fillStyle = "white";
-      const hiWidth = ctx.measureText(hiText).width;
-      ctx.fillText(hiText, WIDTH - 4 - hiWidth, textY);
+      cursorX -= messageWidth;
+      ctx.fillStyle = "#ffcc00";
+      ctx.fillText(message, cursorX, textY);
+      cursorX -= 4;
     }
+
+    cursorX -= hiWidth;
+    ctx.fillStyle = "white";
+    ctx.fillText(hiText, cursorX, textY);
   }
 
   /*
@@ -1011,11 +1040,21 @@
 
     ctx.fillStyle = "white";
     ctx.font = '10px "DotGothic16", monospace';
-    ctx.fillText(
-      `SCORE: ${score}`,
-      WIDTH / 2,
-      HEIGHT / 2 + 2
-    );
+
+    if (twoPlayerMode) {
+      ctx.fillText(
+        `SC: ${score}  2PSC: ${score2}`,
+        WIDTH / 2,
+        HEIGHT / 2 + 2
+      );
+    } else {
+      ctx.fillText(
+        `SCORE: ${score}`,
+        WIDTH / 2,
+        HEIGHT / 2 + 2
+      );
+    }
+
     ctx.fillText(
       `TIME: ${formatRunTime(runTimeMs)}`,
       WIDTH / 2,
@@ -1175,6 +1214,7 @@
    */
   function restartGame() {
     score = 0;
+    score2 = 0;
     highScoreAtStart = highScore;
     gameOver = false;
     confirmingClearData = false;
@@ -1214,6 +1254,7 @@
     highScore = 0;
     highScoreAtStart = 0;
     score = 0;
+    score2 = 0;
     confirmingClearData = false;
 
     if (loggedInUsername) {
@@ -1476,6 +1517,7 @@
       highScore = 0;
       highScoreAtStart = 0;
       score = 0;
+      score2 = 0;
       updateAccountView();
       setAccountStatus("アカウントを削除しました", "ok");
       restartGame();
