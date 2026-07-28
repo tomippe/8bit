@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.7">
+  <meta name="app-version" content="1.0.8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -252,6 +252,7 @@
 
   const INVINCIBLE_DURATION_MS = 10000;
   const INVINCIBLE_ITEM_CHANCE = 0.1;
+  const INVINCIBLE_ITEM_LIFETIME_MS = 5000;
   const STAR_COOLDOWN_COINS = 3;
 
   const clearConfirmButtons = {
@@ -290,7 +291,8 @@
     y: 0,
     width: 10,
     height: 10,
-    active: false
+    active: false,
+    remainingMs: 0
   };
 
   /*
@@ -528,6 +530,7 @@
     }
 
     invincibleItem.active = true;
+    invincibleItem.remainingMs = INVINCIBLE_ITEM_LIFETIME_MS;
   }
 
   /*
@@ -1004,6 +1007,15 @@
       );
     }
 
+    if (invincibleItem.active) {
+      invincibleItem.remainingMs -= deltaMs;
+
+      if (invincibleItem.remainingMs <= 0) {
+        invincibleItem.active = false;
+        invincibleItem.remainingMs = 0;
+      }
+    }
+
     updatePlayer();
     updateEnemies();
     checkGameCollisions();
@@ -1054,6 +1066,7 @@
     paused = false;
     invincibleRemainingMs = 0;
     invincibleItem.active = false;
+    invincibleItem.remainingMs = 0;
     starCooldownCoins = 0;
     lastFrameTime = performance.now();
 
