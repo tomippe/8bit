@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.11">
+  <meta name="app-version" content="1.0.12">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -200,12 +200,13 @@
   <canvas id="gameCanvas" width="320" height="240"></canvas>
 
   <div class="info">
-    矢印キー：移動　P：ポーズ　スペースキー：再スタート<br>
+    1P：矢印キー　2P：WASD　P：ポーズ　スペース：再スタート<br>
     黄色いコインを集めろ！赤い敵には触れるな！<br>
     コイン10個に1回くらい出る水色の星を取ると10秒間無敵！
   </div>
 
   <button id="restartButton">RESTART</button>
+  <button id="twoPlayerButton">2P</button>
   <button id="clearDataButton">データ削除</button>
 </div>
 
@@ -216,6 +217,7 @@
   const ctx = canvas.getContext("2d");
 
   const restartButton = document.getElementById("restartButton");
+  const twoPlayerButton = document.getElementById("twoPlayerButton");
   const clearDataButton = document.getElementById("clearDataButton");
   const accountToggleButton = document.getElementById("accountToggleButton");
   const usernameInput = document.getElementById("usernameInput");
@@ -246,8 +248,10 @@
   let animationId = null;
   let lastFrameTime = performance.now();
   let invincibleRemainingMs = 0;
+  let invincibleRemainingMs2 = 0;
   let starCooldownCoins = 0;
   let runTimeMs = 0;
+  let twoPlayerMode = false;
   let loggedInUsername = null;
   let authPanelOpen = false;
 
@@ -271,7 +275,35 @@
     height: 16,
     speed: 2,
     vx: 0,
-    vy: 0
+    vy: 0,
+    label: "P1",
+    colors: {
+      body: "#2398ff",
+      light: "#70c8ff",
+      feet: "#075da8",
+      invBody: "#7ef9ff",
+      invLight: "#ffffff",
+      invFeet: "#2bb8c8"
+    }
+  };
+
+  const player2 = {
+    x: 264,
+    y: 120,
+    width: 16,
+    height: 16,
+    speed: 2,
+    vx: 0,
+    vy: 0,
+    label: "P2",
+    colors: {
+      body: "#43a047",
+      light: "#81c784",
+      feet: "#1b5e20",
+      invBody: "#b9f6ca",
+      invLight: "#ffffff",
+      invFeet: "#00c853"
+    }
   };
 
   /*
@@ -335,6 +367,14 @@
         keys.ArrowDown = false;
         keys.ArrowLeft = false;
         keys.ArrowRight = false;
+        keys.w = false;
+        keys.a = false;
+        keys.s = false;
+        keys.d = false;
+        keys.W = false;
+        keys.A = false;
+        keys.S = false;
+        keys.D = false;
       }
     }
 
@@ -358,6 +398,16 @@
       return;
     }
 
+    restartGame();
+  });
+
+  twoPlayerButton.addEventListener("click", () => {
+    if (confirmingClearData) {
+      return;
+    }
+
+    twoPlayerMode = !twoPlayerMode;
+    twoPlayerButton.textContent = twoPlayerMode ? "1P" : "2P";
     restartGame();
   });
 
@@ -412,6 +462,8 @@
     } while (
       attempts < 100 &&
       (isTooClose(x, y, player.x, player.y, minDistance) ||
+        (twoPlayerMode &&
+          isTooClose(x, y, player2.x, player2.y, minDistance)) ||
         enemies.some((enemy) =>
           isTooClose(x, y, enemy.x, enemy.y, minDistance)
         ))
@@ -527,6 +579,7 @@
       validPosition =
         !checkCollision(invincibleItem, coin) &&
         !checkCollision(invincibleItem, player) &&
+        !(twoPlayerMode && checkCollision(invincibleItem, player2)) &&
         !enemies.some((enemy) => checkCollision(invincibleItem, enemy));
     }
 
@@ -534,62 +587,95 @@
     invincibleItem.remainingMs = INVINCIBLE_ITEM_LIFETIME_MS;
   }
 
+  function getActivePlayers() {
+    return twoPlayerMode ? [player, player2] : [player];
+  }
+
+  function getPlayerInvincibleMs(target) {
+    return target === player2
+      ? invincibleRemainingMs2
+      : invincibleRemainingMs;
+  }
+
+  function setPlayerInvincibleMs(target, value) {
+    if (target === player2) {
+      invincibleRemainingMs2 = value;
+    } else {
+      invincibleRemainingMs = value;
+    }
+  }
+
   /*
    * プレイヤーの移動
    */
-  function updatePlayer() {
-    const previousX = player.x;
-    const previousY = player.y;
+  function updateOnePlayer(target, controls) {
+    const previousX = target.x;
+    const previousY = target.y;
 
-    if (keys.ArrowLeft) {
-      player.x -= player.speed;
+    if (controls.left.some((key) => keys[key])) {
+      target.x -= target.speed;
     }
 
-    if (keys.ArrowRight) {
-      player.x += player.speed;
+    if (controls.right.some((key) => keys[key])) {
+      target.x += target.speed;
     }
 
-    if (keys.ArrowUp) {
-      player.y -= player.speed;
+    if (controls.up.some((key) => keys[key])) {
+      target.y -= target.speed;
     }
 
-    if (keys.ArrowDown) {
-      player.y += player.speed;
+    if (controls.down.some((key) => keys[key])) {
+      target.y += target.speed;
     }
 
-    /*
-     * 画面外に出ないようにする
-     */
-    player.x = Math.max(
+    target.x = Math.max(
       0,
-      Math.min(WIDTH - player.width, player.x)
+      Math.min(WIDTH - target.width, target.x)
     );
 
-    player.y = Math.max(
+    target.y = Math.max(
       0,
-      Math.min(HEIGHT - player.height, player.y)
+      Math.min(HEIGHT - target.height, target.y)
     );
 
-    player.vx = player.x - previousX;
-    player.vy = player.y - previousY;
+    target.vx = target.x - previousX;
+    target.vy = target.y - previousY;
+  }
+
+  function updatePlayers() {
+    updateOnePlayer(player, {
+      left: ["ArrowLeft"],
+      right: ["ArrowRight"],
+      up: ["ArrowUp"],
+      down: ["ArrowDown"]
+    });
+
+    if (twoPlayerMode) {
+      updateOnePlayer(player2, {
+        left: ["a", "A"],
+        right: ["d", "D"],
+        up: ["w", "W"],
+        down: ["s", "S"]
+      });
+    }
   }
 
   /*
    * プレイヤーが敵に向かって突っ込んでいるか
    */
-  function isPlayerChargingEnemy(enemy) {
-    if (player.vx === 0 && player.vy === 0) {
+  function isPlayerChargingEnemy(target, enemy) {
+    if (target.vx === 0 && target.vy === 0) {
       return false;
     }
 
-    const playerCenterX = player.x + player.width / 2;
-    const playerCenterY = player.y + player.height / 2;
+    const playerCenterX = target.x + target.width / 2;
+    const playerCenterY = target.y + target.height / 2;
     const enemyCenterX = enemy.x + enemy.width / 2;
     const enemyCenterY = enemy.y + enemy.height / 2;
 
     return (
-      player.vx * (enemyCenterX - playerCenterX) +
-        player.vy * (enemyCenterY - playerCenterY) >
+      target.vx * (enemyCenterX - playerCenterX) +
+        target.vy * (enemyCenterY - playerCenterY) >
       0
     );
   }
@@ -642,75 +728,78 @@
   /*
    * コインと敵の当たり判定
    */
-  function checkGameCollisions() {
-    /*
-     * コインを取得
-     */
-    if (checkCollision(player, coin)) {
-      score++;
+  function onCoinCollected() {
+    score++;
 
-      if (score > highScore) {
-        highScore = score;
-        saveHighScore(highScore);
-      }
-
-      moveCoin();
-
-      /*
-       * 3枚取るごとに敵を追加
-       */
-      if (score % 3 === 0) {
-        createEnemy();
-      }
-
-      /*
-       * コイン10個に1回の確率で無敵アイテム出現
-       * 場に星がある間は出さない
-       */
-      if (
-        !invincibleItem.active &&
-        starCooldownCoins <= 0 &&
-        Math.random() < INVINCIBLE_ITEM_CHANCE
-      ) {
-        spawnInvincibleItem();
-      }
-
-      if (starCooldownCoins > 0) {
-        starCooldownCoins--;
-      }
+    if (score > highScore) {
+      highScore = score;
+      saveHighScore(highScore);
     }
 
-    /*
-     * 無敵アイテムを取得
-     */
+    moveCoin();
+
+    if (score % 3 === 0) {
+      createEnemy();
+    }
+
     if (
-      invincibleItem.active &&
-      checkCollision(player, invincibleItem)
+      !invincibleItem.active &&
+      starCooldownCoins <= 0 &&
+      Math.random() < INVINCIBLE_ITEM_CHANCE
     ) {
-      invincibleItem.active = false;
-      invincibleItem.remainingMs = 0;
-      invincibleRemainingMs = INVINCIBLE_DURATION_MS;
-      starCooldownCoins = STAR_COOLDOWN_COINS;
+      spawnInvincibleItem();
     }
 
-    /*
-     * 敵に触れた
-     */
+    if (starCooldownCoins > 0) {
+      starCooldownCoins--;
+    }
+  }
+
+  function checkGameCollisions() {
+    const activePlayers = getActivePlayers();
+
+    for (const target of activePlayers) {
+      if (checkCollision(target, coin)) {
+        onCoinCollected();
+        break;
+      }
+    }
+
+    if (invincibleItem.active) {
+      for (const target of activePlayers) {
+        if (checkCollision(target, invincibleItem)) {
+          invincibleItem.active = false;
+          invincibleItem.remainingMs = 0;
+          setPlayerInvincibleMs(target, INVINCIBLE_DURATION_MS);
+          starCooldownCoins = STAR_COOLDOWN_COINS;
+          break;
+        }
+      }
+    }
+
     for (let i = enemies.length - 1; i >= 0; i--) {
-      if (!checkCollision(player, enemies[i])) {
-        continue;
+      const enemy = enemies[i];
+      let removed = false;
+
+      for (const target of activePlayers) {
+        if (!checkCollision(target, enemy)) {
+          continue;
+        }
+
+        if (getPlayerInvincibleMs(target) > 0) {
+          if (isPlayerChargingEnemy(target, enemy)) {
+            enemies.splice(i, 1);
+            removed = true;
+            break;
+          }
+        } else {
+          gameOver = true;
+          return;
+        }
       }
 
-      if (invincibleRemainingMs > 0) {
-        /*
-         * プレイヤーから突っ込んだときだけ敵を消す
-         */
-        if (isPlayerChargingEnemy(enemies[i])) {
-          enemies.splice(i, 1);
-        }
-      } else {
-        gameOver = true;
-        break;
+      if (removed) {
+        continue;
       }
     }
   }
@@ -734,8 +823,8 @@
   /*
    * プレイヤーを描く
    */
-  function drawPlayer() {
-    const isInvincible = invincibleRemainingMs > 0;
+  function drawOnePlayer(target, invincibleMs) {
+    const isInvincible = invincibleMs > 0;
     const flashOn =
       !isInvincible || Math.floor(performance.now() / 100) % 2 === 0;
 
@@ -743,51 +832,46 @@
       ctx.globalAlpha = 0.35;
     }
 
-    /*
-     * 本体
-     */
-    ctx.fillStyle = isInvincible ? "#7ef9ff" : "#2398ff";
-    ctx.fillRect(player.x, player.y, 16, 16);
+    const colors = target.colors;
 
-    /*
-     * 明るい部分
-     */
-    ctx.fillStyle = isInvincible ? "#ffffff" : "#70c8ff";
-    ctx.fillRect(player.x + 2, player.y + 2, 12, 4);
+    ctx.fillStyle = isInvincible ? colors.invBody : colors.body;
+    ctx.fillRect(target.x, target.y, 16, 16);
 
-    /*
-     * 目
-     */
+    ctx.fillStyle = isInvincible ? colors.invLight : colors.light;
+    ctx.fillRect(target.x + 2, target.y + 2, 12, 4);
+
     ctx.fillStyle = "white";
-    ctx.fillRect(player.x + 3, player.y + 6, 4, 4);
-    ctx.fillRect(player.x + 9, player.y + 6, 4, 4);
+    ctx.fillRect(target.x + 3, target.y + 6, 4, 4);
+    ctx.fillRect(target.x + 9, target.y + 6, 4, 4);
 
     ctx.fillStyle = "black";
-    ctx.fillRect(player.x + 5, player.y + 8, 2, 2);
-    ctx.fillRect(player.x + 11, player.y + 8, 2, 2);
+    ctx.fillRect(target.x + 5, target.y + 8, 2, 2);
+    ctx.fillRect(target.x + 11, target.y + 8, 2, 2);
 
-    /*
-     * 足
-     */
-    ctx.fillStyle = isInvincible ? "#2bb8c8" : "#075da8";
-    ctx.fillRect(player.x + 2, player.y + 14, 4, 2);
-    ctx.fillRect(player.x + 10, player.y + 14, 4, 2);
+    ctx.fillStyle = isInvincible ? colors.invFeet : colors.feet;
+    ctx.fillRect(target.x + 2, target.y + 14, 4, 2);
+    ctx.fillRect(target.x + 10, target.y + 14, 4, 2);
 
     ctx.globalAlpha = 1;
 
-    /*
-     * プレイヤー表示
-     */
-    ctx.fillStyle = isInvincible ? "#7ef9ff" : "#70c8ff";
+    ctx.fillStyle = isInvincible ? colors.invBody : colors.light;
     ctx.font = '10px "DotGothic16", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     ctx.fillText(
-      isInvincible ? "INVINCIBLE" : "PLAYER",
-      player.x + player.width / 2,
-      Math.max(SCORE_BAR_HEIGHT + 2, player.y - 1)
+      isInvincible ? "INV" : target.label,
+      target.x + target.width / 2,
+      Math.max(SCORE_BAR_HEIGHT + 2, target.y - 1)
     );
     ctx.textAlign = "left";
+  }
+
+  function drawPlayers() {
+    drawOnePlayer(player, invincibleRemainingMs);
+
+    if (twoPlayerMode) {
+      drawOnePlayer(player2, invincibleRemainingMs2);
+    }
   }
 
   /*
@@ -881,7 +965,13 @@
     if (invincibleRemainingMs > 0) {
       const seconds = Math.ceil(invincibleRemainingMs / 1000);
       ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`INV ${seconds}`, 230, textY);
+      ctx.fillText(`P1 ${seconds}`, 230, textY);
+    }
+
+    if (twoPlayerMode && invincibleRemainingMs2 > 0) {
+      const seconds = Math.ceil(invincibleRemainingMs2 / 1000);
+      ctx.fillStyle = "#81c784";
+      ctx.fillText(`P2 ${seconds}`, 270, textY);
     }
 
     const hiText = `HI ${highScore}`;
@@ -1019,6 +1109,13 @@
       );
     }
 
+    if (invincibleRemainingMs2 > 0) {
+      invincibleRemainingMs2 = Math.max(
+        0,
+        invincibleRemainingMs2 - deltaMs
+      );
+    }
+
     if (invincibleItem.active) {
       invincibleItem.remainingMs -= deltaMs;
 
@@ -1028,7 +1125,7 @@
       }
     }
 
-    updatePlayer();
+    updatePlayers();
     updateEnemies();
     checkGameCollisions();
   }
@@ -1041,7 +1138,7 @@
     drawCoin();
     drawInvincibleItem();
     drawEnemies();
-    drawPlayer();
+    drawPlayers();
     drawScore();
 
     if (gameOver) {
@@ -1077,6 +1174,7 @@
     confirmingClearData = false;
     paused = false;
     invincibleRemainingMs = 0;
+    invincibleRemainingMs2 = 0;
     invincibleItem.active = false;
     invincibleItem.remainingMs = 0;
     starCooldownCoins = 0;
@@ -1085,6 +1183,13 @@
 
     player.x = 40;
     player.y = 120;
+    player.vx = 0;
+    player.vy = 0;
+
+    player2.x = 264;
+    player2.y = 120;
+    player2.vx = 0;
+    player2.vy = 0;
 
     enemies = [];
 
