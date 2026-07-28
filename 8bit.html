@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.7">
+  <meta name="app-version" content="1.0.8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -664,16 +664,18 @@
 
       /*
        * コイン10個に1回の確率で無敵アイテム出現
-       * 出現後は3回空けてから再抽選
+       * 場に星がある間は出さない
        */
-      if (starCooldownCoins > 0) {
-        starCooldownCoins--;
-      } else if (
+      if (
         !invincibleItem.active &&
+        starCooldownCoins <= 0 &&
         Math.random() < INVINCIBLE_ITEM_CHANCE
       ) {
         spawnInvincibleItem();
-        starCooldownCoins = STAR_COOLDOWN_COINS;
+      }
+
+      if (starCooldownCoins > 0) {
+        starCooldownCoins--;
       }
     }
 
@@ -685,7 +687,9 @@
       checkCollision(player, invincibleItem)
     ) {
       invincibleItem.active = false;
+      invincibleItem.remainingMs = 0;
       invincibleRemainingMs = INVINCIBLE_DURATION_MS;
+      starCooldownCoins = STAR_COOLDOWN_COINS;
     }
 
     /*
@@ -997,7 +1001,7 @@
       return;
     }
 
-    const deltaMs = now - lastFrameTime;
+    const deltaMs = Math.min(now - lastFrameTime, 100);
     lastFrameTime = now;
 
     if (invincibleRemainingMs > 0) {
