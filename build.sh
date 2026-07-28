@@ -29,6 +29,10 @@ while [ $# -gt 0 ]; do
     shift || true
 done
 
+if [ -f "$HOME/.wp-env" ]; then
+    # shellcheck source=/dev/null
+    source "$HOME/.wp-env"
+fi
 if [ -f "$SCRIPT_DIR/.env" ]; then
     # shellcheck source=/dev/null
     source "$SCRIPT_DIR/.env"
