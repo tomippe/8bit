@@ -102,4 +102,20 @@ if ($action === 'logout') {
     respond(['ok' => true]);
 }
 
+if ($action === 'delete') {
+    $current = requireLogin();
+    $users = loadUsers();
+
+    if (!isset($users[$current])) {
+        unset($_SESSION['username']);
+        respondError('アカウントが見つかりません', 404);
+    }
+
+    unset($users[$current]);
+    saveUsers($users);
+    unset($_SESSION['username']);
+
+    respond(['ok' => true]);
+}
+
 respondError('不明な action です');
