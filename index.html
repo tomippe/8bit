@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.1">
+  <meta name="app-version" content="1.0.2">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -10,6 +10,10 @@
   <style>
     * {
       box-sizing: border-box;
+      -webkit-font-smoothing: none;
+      -moz-osx-font-smoothing: unset;
+      font-smooth: never;
+      text-rendering: geometricPrecision;
     }
 
     body {
@@ -205,7 +209,8 @@
   "use strict";
 
   const canvas = document.getElementById("gameCanvas");
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.imageSmoothingEnabled = false;
 
   const restartButton = document.getElementById("restartButton");
   const clearDataButton = document.getElementById("clearDataButton");
