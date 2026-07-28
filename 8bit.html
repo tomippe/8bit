@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.3">
+  <meta name="app-version" content="1.0.4">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -32,9 +32,10 @@
     }
 
     h1 {
-      margin: 0 0 10px;
-      font-size: 24px;
-      letter-spacing: 2px;
+      margin: 0 0 12px;
+      font-size: 32px;
+      letter-spacing: 0;
+      line-height: 1.2;
     }
 
     canvas {
@@ -227,7 +228,7 @@
   const HEIGHT = canvas.height;
 
   const TILE_SIZE = 8;
-  const SCORE_BAR_HEIGHT = 16;
+  const SCORE_BAR_HEIGHT = 20;
   const HIGH_SCORE_KEY = "coinHunterHighScore";
   const API_BASE = "api";
 
@@ -767,13 +768,13 @@
      * プレイヤー表示
      */
     ctx.fillStyle = isInvincible ? "#7ef9ff" : "#70c8ff";
-    ctx.font = '8px "DotGothic16", monospace';
+    ctx.font = '16px "DotGothic16", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     ctx.fillText(
       isInvincible ? "INVINCIBLE" : "PLAYER",
       player.x + player.width / 2,
-      Math.max(SCORE_BAR_HEIGHT + 8, player.y - 1)
+      Math.max(SCORE_BAR_HEIGHT + 2, player.y - 1)
     );
     ctx.textAlign = "left";
   }
@@ -846,39 +847,42 @@
    * スコア表示
    */
   function drawScore() {
-    ctx.font = '10px "DotGothic16", monospace';
-    ctx.textBaseline = "top";
+    ctx.font = '16px "DotGothic16", monospace';
+    ctx.textBaseline = "middle";
 
     ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, WIDTH, 16);
+    ctx.fillRect(0, 0, WIDTH, SCORE_BAR_HEIGHT);
+
+    const textY = SCORE_BAR_HEIGHT / 2;
 
     ctx.fillStyle = "white";
-    ctx.fillText(`SCORE ${score}`, 6, 4);
-    ctx.fillText(`ENEMY ${enemies.length}`, 100, 4);
+    ctx.fillText(`SCORE ${score}`, 4, textY);
+    ctx.fillText(`ENEMY ${enemies.length}`, 110, textY);
 
     if (invincibleRemainingMs > 0) {
       const seconds = Math.ceil(invincibleRemainingMs / 1000);
       ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`INV ${seconds}s`, 170, 4);
+      ctx.fillText(`INV ${seconds}`, 195, textY);
     }
 
     const hiText = `HI ${highScore}`;
     const isHighScoreUpdating = score > highScoreAtStart;
 
     if (isHighScoreUpdating) {
-      const message = "ハイスコア更新中!!!";
+      const message = "NEW!";
       const hiWidth = ctx.measureText(hiText).width;
       const messageWidth = ctx.measureText(message).width;
       const gap = 4;
-      const startX = WIDTH - 6 - hiWidth - gap - messageWidth;
+      const startX = WIDTH - 4 - hiWidth - gap - messageWidth;
 
       ctx.fillStyle = "white";
-      ctx.fillText(hiText, startX, 4);
+      ctx.fillText(hiText, startX, textY);
       ctx.fillStyle = "#ffcc00";
-      ctx.fillText(message, startX + hiWidth + gap, 4);
+      ctx.fillText(message, startX + hiWidth + gap, textY);
     } else {
       ctx.fillStyle = "white";
-      ctx.fillText(hiText, 245, 4);
+      const hiWidth = ctx.measureText(hiText).width;
+      ctx.fillText(hiText, WIDTH - 4 - hiWidth, textY);
     }
   }
 
@@ -893,18 +897,17 @@
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "#ff3b30";
-    ctx.font = '24px "DotGothic16", monospace';
+    ctx.font = '32px "DotGothic16", monospace';
     ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 24);
 
     ctx.fillStyle = "white";
-    ctx.font = '12px "DotGothic16", monospace';
+    ctx.font = '16px "DotGothic16", monospace';
     ctx.fillText(
       `SCORE: ${score}`,
       WIDTH / 2,
       HEIGHT / 2 + 8
     );
 
-    ctx.font = '10px "DotGothic16", monospace';
     ctx.fillText(
       "PRESS SPACE TO RESTART",
       WIDTH / 2,
@@ -925,19 +928,18 @@
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "white";
-    ctx.font = '11px "DotGothic16", monospace';
+    ctx.font = '16px "DotGothic16", monospace';
     ctx.fillText(
-      "本当にこれまでのデータを削除しますか?",
+      "本当にデータを削除しますか?",
       WIDTH / 2,
-      HEIGHT / 2 - 20
+      HEIGHT / 2 - 28
     );
 
     drawClearConfirmButton(clearConfirmButtons.yes, "はい", "#e53935");
     drawClearConfirmButton(clearConfirmButtons.no, "いいえ", "#555555");
 
     ctx.fillStyle = "#aaaaaa";
-    ctx.font = '9px "DotGothic16", monospace';
-    ctx.fillText("Y: はい　N: いいえ", WIDTH / 2, HEIGHT / 2 + 55);
+    ctx.fillText("Y: はい  N: いいえ", WIDTH / 2, HEIGHT / 2 + 55);
 
     ctx.textAlign = "left";
   }
@@ -947,7 +949,7 @@
     ctx.fillRect(button.x, button.y, button.width, button.height);
 
     ctx.fillStyle = "white";
-    ctx.font = '12px "DotGothic16", monospace';
+    ctx.font = '16px "DotGothic16", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(
@@ -968,11 +970,11 @@
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "#70c8ff";
-    ctx.font = '24px "DotGothic16", monospace';
+    ctx.font = '32px "DotGothic16", monospace';
     ctx.fillText("PAUSED", WIDTH / 2, HEIGHT / 2 - 8);
 
     ctx.fillStyle = "white";
-    ctx.font = '10px "DotGothic16", monospace';
+    ctx.font = '16px "DotGothic16", monospace';
     ctx.fillText("PRESS P TO RESUME", WIDTH / 2, HEIGHT / 2 + 24);
 
     ctx.textAlign = "left";
