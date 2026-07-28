@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.10">
+  <meta name="app-version" content="1.0.11">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -246,8 +246,8 @@
   let animationId = null;
   let lastFrameTime = performance.now();
   let invincibleRemainingMs = 0;
-  let gameElapsedMs = 0;
   let starCooldownCoins = 0;
+  let runTimeMs = 0;
   let loggedInUsername = null;
   let authPanelOpen = false;
 
@@ -854,6 +854,13 @@
     }
   }
 
+  function formatRunTime(ms) {
+    const totalMs = Math.max(0, Math.floor(ms));
+    const seconds = Math.floor(totalMs / 1000);
+    const millis = String(totalMs % 1000).padStart(3, "0");
+    return `${seconds}.${millis}`;
+  }
+
   /*
    * スコア表示
    */
@@ -868,28 +875,23 @@
 
     ctx.fillStyle = "white";
     ctx.fillText(`SCORE ${score}`, 4, textY);
-    ctx.fillText(`ENEMY ${enemies.length}`, 100, textY);
+    ctx.fillText(`ENEMY ${enemies.length}`, 78, textY);
+    ctx.fillText(`TIME ${formatRunTime(runTimeMs)}`, 145, textY);
 
     if (invincibleRemainingMs > 0) {
       const seconds = Math.ceil(invincibleRemainingMs / 1000);
       ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`INV ${seconds}`, 175, textY);
+      ctx.fillText(`INV ${seconds}`, 230, textY);
     }
 
     const hiText = `HI ${highScore}`;
     const isHighScoreUpdating = score > highScoreAtStart;
 
     if (isHighScoreUpdating) {
-      const message = "NEW!";
-      const hiWidth = ctx.measureText(hiText).width;
-      const messageWidth = ctx.measureText(message).width;
-      const gap = 4;
-      const startX = WIDTH - 4 - hiWidth - gap - messageWidth;
-
-      ctx.fillStyle = "white";
-      ctx.fillText(hiText, startX, textY);
       ctx.fillStyle = "#ffcc00";
-      ctx.fillText(message, startX + hiWidth + gap, textY);
+      const message = "NEW!";
+      const messageWidth = ctx.measureText(message).width;
+      ctx.fillText(message, WIDTH - 4 - messageWidth, textY);
     } else {
       ctx.fillStyle = "white";
       const hiWidth = ctx.measureText(hiText).width;
@@ -919,15 +921,14 @@
       HEIGHT / 2 + 2
     );
     ctx.fillText(
-      `TIME: ${Math.floor(gameElapsedMs / 1000)}s`,
+      `TIME: ${formatRunTime(runTimeMs)}`,
       WIDTH / 2,
       HEIGHT / 2 + 16
     );
-
     ctx.fillText(
       "PRESS SPACE TO RESTART",
       WIDTH / 2,
-      HEIGHT / 2 + 34
+      HEIGHT / 2 + 32
     );
 
     ctx.textAlign = "left";
@@ -1009,7 +1010,7 @@
 
     const deltaMs = Math.min(now - lastFrameTime, 100);
     lastFrameTime = now;
-    gameElapsedMs += deltaMs;
+    runTimeMs += deltaMs;
 
     if (invincibleRemainingMs > 0) {
       invincibleRemainingMs = Math.max(
@@ -1076,10 +1077,10 @@
     confirmingClearData = false;
     paused = false;
     invincibleRemainingMs = 0;
-    gameElapsedMs = 0;
     invincibleItem.active = false;
     invincibleItem.remainingMs = 0;
     starCooldownCoins = 0;
+    runTimeMs = 0;
     lastFrameTime = performance.now();
 
     player.x = 40;
