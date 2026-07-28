@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.5">
+  <meta name="app-version" content="1.0.6">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -14,6 +14,8 @@
   <style>
     * {
       box-sizing: border-box;
+      text-shadow: none;
+      box-shadow: none;
     }
 
     body {
@@ -32,10 +34,11 @@
     }
 
     h1 {
-      margin: 0 0 12px;
-      font-size: 32px;
+      margin: 0 0 8px;
+      font-size: 16px;
       letter-spacing: 0;
       line-height: 1.2;
+      text-shadow: none;
     }
 
     canvas {
@@ -228,7 +231,7 @@
   const HEIGHT = canvas.height;
 
   const TILE_SIZE = 8;
-  const SCORE_BAR_HEIGHT = 20;
+  const SCORE_BAR_HEIGHT = 14;
   const HIGH_SCORE_KEY = "coinHunterHighScore";
   const API_BASE = "api";
 
@@ -768,7 +771,7 @@
      * プレイヤー表示
      */
     ctx.fillStyle = isInvincible ? "#7ef9ff" : "#70c8ff";
-    ctx.font = '16px "DotGothic16", monospace';
+    ctx.font = '10px "DotGothic16", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     ctx.fillText(
@@ -847,7 +850,7 @@
    * スコア表示
    */
   function drawScore() {
-    ctx.font = '16px "DotGothic16", monospace';
+    ctx.font = '10px "DotGothic16", monospace';
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "black";
@@ -857,12 +860,12 @@
 
     ctx.fillStyle = "white";
     ctx.fillText(`SCORE ${score}`, 4, textY);
-    ctx.fillText(`ENEMY ${enemies.length}`, 110, textY);
+    ctx.fillText(`ENEMY ${enemies.length}`, 100, textY);
 
     if (invincibleRemainingMs > 0) {
       const seconds = Math.ceil(invincibleRemainingMs / 1000);
       ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`INV ${seconds}`, 195, textY);
+      ctx.fillText(`INV ${seconds}`, 175, textY);
     }
 
     const hiText = `HI ${highScore}`;
@@ -897,21 +900,21 @@
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "#ff3b30";
-    ctx.font = '32px "DotGothic16", monospace';
-    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 24);
+    ctx.font = '16px "DotGothic16", monospace';
+    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 20);
 
     ctx.fillStyle = "white";
-    ctx.font = '16px "DotGothic16", monospace';
+    ctx.font = '10px "DotGothic16", monospace';
     ctx.fillText(
       `SCORE: ${score}`,
       WIDTH / 2,
-      HEIGHT / 2 + 8
+      HEIGHT / 2 + 4
     );
 
     ctx.fillText(
       "PRESS SPACE TO RESTART",
       WIDTH / 2,
-      HEIGHT / 2 + 32
+      HEIGHT / 2 + 24
     );
 
     ctx.textAlign = "left";
@@ -928,7 +931,7 @@
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "white";
-    ctx.font = '16px "DotGothic16", monospace';
+    ctx.font = '10px "DotGothic16", monospace';
     ctx.fillText(
       "本当にデータを削除しますか?",
       WIDTH / 2,
@@ -949,7 +952,7 @@
     ctx.fillRect(button.x, button.y, button.width, button.height);
 
     ctx.fillStyle = "white";
-    ctx.font = '16px "DotGothic16", monospace';
+    ctx.font = '10px "DotGothic16", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(
@@ -970,12 +973,12 @@
     ctx.textBaseline = "middle";
 
     ctx.fillStyle = "#70c8ff";
-    ctx.font = '32px "DotGothic16", monospace';
+    ctx.font = '16px "DotGothic16", monospace';
     ctx.fillText("PAUSED", WIDTH / 2, HEIGHT / 2 - 8);
 
     ctx.fillStyle = "white";
-    ctx.font = '16px "DotGothic16", monospace';
-    ctx.fillText("PRESS P TO RESUME", WIDTH / 2, HEIGHT / 2 + 24);
+    ctx.font = '10px "DotGothic16", monospace';
+    ctx.fillText("PRESS P TO RESUME", WIDTH / 2, HEIGHT / 2 + 20);
 
     ctx.textAlign = "left";
   }
