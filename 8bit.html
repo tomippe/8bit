@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.26">
+  <meta name="app-version" content="1.0.27">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -292,6 +292,144 @@
     .login-time.visible {
       display: block;
     }
+
+    .touch-controls {
+      display: none;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      z-index: 80;
+      padding: 0 10px;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+      gap: 12px;
+    }
+
+    .touch-controls.visible {
+      display: flex;
+    }
+
+    body.has-touch-controls {
+      padding-bottom: 180px;
+      align-items: flex-start;
+      padding-top: 56px;
+    }
+
+    .touch-pad {
+      pointer-events: auto;
+      display: grid;
+      grid-template-columns: 58px 58px 58px;
+      grid-template-rows: 58px 58px 58px;
+      gap: 6px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .touch-pad-wrap {
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .touch-pad-wrap-p2 {
+      display: none;
+    }
+
+    .touch-controls.two-player .touch-pad-wrap-p2 {
+      display: flex;
+    }
+
+    .touch-pad-p2 {
+      display: grid;
+    }
+
+    .touch-pad button {
+      margin: 0;
+      padding: 0;
+      width: 58px;
+      height: 58px;
+      border-width: 3px;
+      font-size: 20px;
+      line-height: 1;
+      background: rgba(34, 34, 34, 0.88);
+      touch-action: none;
+      -webkit-touch-callout: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .touch-pad button:hover {
+      background: rgba(34, 34, 34, 0.88);
+      color: white;
+    }
+
+    .touch-pad button.active,
+    .touch-pad button:active {
+      background: white;
+      color: black;
+    }
+
+    .touch-btn-up { grid-column: 2; grid-row: 1; }
+    .touch-btn-left { grid-column: 1; grid-row: 2; }
+    .touch-btn-right { grid-column: 3; grid-row: 2; }
+    .touch-btn-down { grid-column: 2; grid-row: 3; }
+
+    .touch-actions {
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-self: flex-end;
+    }
+
+    .touch-actions button {
+      margin: 0;
+      min-width: 72px;
+      padding: 14px 12px;
+      font-size: 13px;
+      background: rgba(34, 34, 34, 0.88);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .touch-actions button:hover {
+      background: rgba(34, 34, 34, 0.88);
+      color: white;
+    }
+
+    .touch-actions button:active,
+    .touch-actions button.active {
+      background: white;
+      color: black;
+    }
+
+    .touch-pad-label {
+      font-size: 11px;
+      color: #aaa;
+      pointer-events: none;
+    }
+
+    .touch-pad-label-p1 { color: #70c8ff; }
+    .touch-pad-label-p2 { color: #ff9a70; }
+
+    @media (max-width: 420px) {
+      .touch-pad {
+        grid-template-columns: 52px 52px 52px;
+        grid-template-rows: 52px 52px 52px;
+        gap: 5px;
+      }
+
+      .touch-pad button {
+        width: 52px;
+        height: 52px;
+        font-size: 18px;
+      }
+    }
   </style>
 </head>
 
@@ -329,6 +467,32 @@
   <button id="restartButton">RESTART</button>
   <button id="twoPlayerButton">2P</button>
   <button id="clearDataButton">データ削除</button>
+
+  <div id="touchControls" class="touch-controls" aria-hidden="true">
+    <div class="touch-pad-wrap">
+      <span class="touch-pad-label touch-pad-label-p1">1P</span>
+      <div class="touch-pad touch-pad-p1" aria-label="1P操作">
+        <button type="button" class="touch-btn-up" data-keys="ArrowUp">▲</button>
+        <button type="button" class="touch-btn-left" data-keys="ArrowLeft">◀</button>
+        <button type="button" class="touch-btn-right" data-keys="ArrowRight">▶</button>
+        <button type="button" class="touch-btn-down" data-keys="ArrowDown">▼</button>
+      </div>
+    </div>
+
+    <div class="touch-actions">
+      <button type="button" id="touchPauseButton">PAUSE</button>
+    </div>
+
+    <div class="touch-pad-wrap touch-pad-wrap-p2">
+      <span class="touch-pad-label touch-pad-label-p2">2P</span>
+      <div class="touch-pad touch-pad-p2" aria-label="2P操作">
+        <button type="button" class="touch-btn-up" data-keys="w,W">▲</button>
+        <button type="button" class="touch-btn-left" data-keys="a,A">◀</button>
+        <button type="button" class="touch-btn-right" data-keys="d,D">▶</button>
+        <button type="button" class="touch-btn-down" data-keys="s,S">▼</button>
+      </div>
+    </div>
+  </div>
 
   <div id="historyPanel" class="history-panel">
     <h2>履歴</h2>
@@ -371,6 +535,8 @@
   const restartButton = document.getElementById("restartButton");
   const twoPlayerButton = document.getElementById("twoPlayerButton");
   const clearDataButton = document.getElementById("clearDataButton");
+  const touchControls = document.getElementById("touchControls");
+  const touchPauseButton = document.getElementById("touchPauseButton");
   const accountToggleButton = document.getElementById("accountToggleButton");
   const usernameInput = document.getElementById("usernameInput");
   const passwordInput = document.getElementById("passwordInput");
@@ -421,6 +587,7 @@
   let countdownPhase = null;
   let countdownPhaseStartedAt = 0;
   let needsStartGesture = true;
+  let physicalKeyboardConnected = false;
   let animationId = null;
   let lastFrameTime = performance.now();
   let invincibleRemainingMs = 0;
@@ -908,7 +1075,41 @@
   /*
    * キーボード操作
    */
+  function togglePause() {
+    if (
+      gameOver ||
+      confirmingClearData ||
+      countdownPhase !== null ||
+      needsStartGesture
+    ) {
+      return;
+    }
+
+    paused = !paused;
+    playSound("pause");
+
+    if (paused) {
+      clearMovementKeys();
+      clearTouchButtonActiveState();
+    }
+  }
+
   window.addEventListener("keydown", (event) => {
+    const targetTag = event.target && event.target.tagName;
+    const typingInField =
+      targetTag === "INPUT" || targetTag === "TEXTAREA" || targetTag === "SELECT";
+
+    if (
+      event.isTrusted &&
+      !typingInField &&
+      (event.key.startsWith("Arrow") ||
+        ["w", "a", "s", "d", "W", "A", "S", "D", "p", "P", " "].includes(
+          event.key
+        ))
+    ) {
+      markPhysicalKeyboardConnected();
+    }
+
     keys[event.key] = true;
 
     const preventKeys = [
@@ -927,19 +1128,8 @@
       restartGame();
     }
 
-    if (
-      (event.key === "p" || event.key === "P") &&
-      !gameOver &&
-      !confirmingClearData &&
-      countdownPhase === null &&
-      !needsStartGesture
-    ) {
-      paused = !paused;
-      playSound("pause");
-
-      if (paused) {
-        clearMovementKeys();
-      }
+    if (event.key === "p" || event.key === "P") {
+      togglePause();
     }
 
     if (confirmingClearData) {
@@ -971,6 +1161,130 @@
     keys.S = false;
     keys.D = false;
   }
+
+  function clearTouchButtonActiveState() {
+    touchControls
+      .querySelectorAll("button.active")
+      .forEach((button) => button.classList.remove("active"));
+  }
+
+  function isTouchPrimaryDevice() {
+    try {
+      if (window.matchMedia("(pointer: coarse)").matches) {
+        return true;
+      }
+
+      if (
+        navigator.maxTouchPoints > 0 &&
+        window.matchMedia("(hover: none)").matches
+      ) {
+        return true;
+      }
+    } catch (error) {
+      // ignore
+    }
+
+    return navigator.maxTouchPoints > 0 && /Mobi|Android|iPhone|iPad|iPod/i.test(
+      navigator.userAgent
+    );
+  }
+
+  function shouldShowTouchControls() {
+    return isTouchPrimaryDevice() && !physicalKeyboardConnected;
+  }
+
+  function updateTouchControlsVisibility() {
+    const show = shouldShowTouchControls();
+
+    touchControls.classList.toggle("visible", show);
+    touchControls.classList.toggle("two-player", twoPlayerMode);
+    touchControls.setAttribute("aria-hidden", show ? "false" : "true");
+    document.body.classList.toggle("has-touch-controls", show);
+
+    if (!show) {
+      clearMovementKeys();
+      clearTouchButtonActiveState();
+    }
+  }
+
+  function markPhysicalKeyboardConnected() {
+    if (physicalKeyboardConnected) {
+      return;
+    }
+
+    physicalKeyboardConnected = true;
+    updateTouchControlsVisibility();
+  }
+
+  function bindTouchKeyButton(button) {
+    const keyNames = (button.getAttribute("data-keys") || "")
+      .split(",")
+      .map((key) => key.trim())
+      .filter(Boolean);
+
+    if (!keyNames.length) {
+      return;
+    }
+
+    const setPressed = (pressed) => {
+      for (const keyName of keyNames) {
+        keys[keyName] = pressed;
+      }
+
+      button.classList.toggle("active", pressed);
+    };
+
+    const onDown = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.pointerId !== undefined) {
+        button.setPointerCapture(event.pointerId);
+      }
+
+      setPressed(true);
+    };
+
+    const onUp = (event) => {
+      event.preventDefault();
+      setPressed(false);
+    };
+
+    button.addEventListener("pointerdown", onDown);
+    button.addEventListener("pointerup", onUp);
+    button.addEventListener("pointercancel", onUp);
+    button.addEventListener("lostpointercapture", () => setPressed(false));
+    button.addEventListener("contextmenu", (event) => event.preventDefault());
+  }
+
+  touchControls
+    .querySelectorAll("button[data-keys]")
+    .forEach(bindTouchKeyButton);
+
+  touchPauseButton.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    togglePause();
+  });
+
+  touchPauseButton.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
+  try {
+    const coarseQuery = window.matchMedia("(pointer: coarse)");
+    const onCoarseChange = () => updateTouchControlsVisibility();
+
+    if (coarseQuery.addEventListener) {
+      coarseQuery.addEventListener("change", onCoarseChange);
+    } else if (coarseQuery.addListener) {
+      coarseQuery.addListener(onCoarseChange);
+    }
+  } catch (error) {
+    // ignore
+  }
+
+  updateTouchControlsVisibility();
 
   function pauseForBackground() {
     if (gameOver || confirmingClearData || paused || needsStartGesture) {
@@ -1017,6 +1331,7 @@
     twoPlayerMode = !twoPlayerMode;
     twoPlayerButton.textContent = twoPlayerMode ? "1P" : "2P";
     refreshHighScoreForMode();
+    updateTouchControlsVisibility();
     restartGame();
   });
 
