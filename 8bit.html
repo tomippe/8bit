@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.22">
+  <meta name="app-version" content="1.0.23">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -458,7 +458,8 @@
       ],
       kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
       snare: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-      hat: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0]
+      hat: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+      cymbal: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     invincible: {
       stepSec: 0.1,
@@ -472,7 +473,8 @@
       ],
       kick: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
       snare: [0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0],
-      hat: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      hat: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      cymbal: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     }
   };
 
@@ -691,6 +693,42 @@
     playNoise(0.03, 0.045, when, destination);
   }
 
+  function playCymbal(when, destination) {
+    const ctxAudio = ensureAudioContext();
+
+    if (!ctxAudio || ctxAudio.state !== "running") {
+      return;
+    }
+
+    const start = ctxAudio.currentTime + Math.max(0, when || 0);
+    const length = 0.45;
+    const sampleCount = Math.floor(ctxAudio.sampleRate * length);
+    const buffer = ctxAudio.createBuffer(1, sampleCount, ctxAudio.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < sampleCount; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const source = ctxAudio.createBufferSource();
+    const filter = ctxAudio.createBiquadFilter();
+    const gain = ctxAudio.createGain();
+
+    source.buffer = buffer;
+    filter.type = "highpass";
+    filter.frequency.setValueAtTime(4200, start);
+    filter.Q.setValueAtTime(0.7, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.14, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(destination || ctxAudio.destination);
+    source.start(start);
+    source.stop(start + length + 0.02);
+  }
+
   function scheduleBgmStep(pattern, stepIndex, absoluteTime) {
     if (!audioContext || audioContext.state !== "running") {
       return;
@@ -702,6 +740,7 @@
     const kick = pattern.kick[stepIndex % pattern.kick.length];
     const snare = pattern.snare[stepIndex % pattern.snare.length];
     const hat = pattern.hat[stepIndex % pattern.hat.length];
+    const cymbal = pattern.cymbal[stepIndex % pattern.cymbal.length];
 
     if (melody) {
       playTone(melody, pattern.stepSec * 0.8, "square", 0.12, when, bgmGainNode);
@@ -721,6 +760,10 @@
 
     if (hat) {
       playHat(when, bgmGainNode);
+    }
+
+    if (cymbal) {
+      playCymbal(when, bgmGainNode);
     }
   }
 
