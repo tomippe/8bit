@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.28">
+  <meta name="app-version" content="1.0.29">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1536,21 +1536,23 @@
   function updateOnePlayer(target, controls) {
     const previousX = target.x;
     const previousY = target.y;
+    const moveSpeed =
+      getPlayerInvincibleMs(target) > 0 ? target.speed * 1.5 : target.speed;
 
     if (controls.left.some((key) => keys[key])) {
-      target.x -= target.speed;
+      target.x -= moveSpeed;
     }
 
     if (controls.right.some((key) => keys[key])) {
-      target.x += target.speed;
+      target.x += moveSpeed;
     }
 
     if (controls.up.some((key) => keys[key])) {
-      target.y -= target.speed;
+      target.y -= moveSpeed;
     }
 
     if (controls.down.some((key) => keys[key])) {
-      target.y += target.speed;
+      target.y += moveSpeed;
     }
 
     target.x = Math.max(
