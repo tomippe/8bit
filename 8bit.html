@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.19">
+  <meta name="app-version" content="1.0.20">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -354,6 +354,11 @@
       <button type="button" id="soundOnButton">ON</button>
       <button type="button" id="soundOffButton">OFF</button>
     </div>
+    <div class="settings-row">
+      <label>BGM</label>
+      <button type="button" id="bgmOnButton">ON</button>
+      <button type="button" id="bgmOffButton">OFF</button>
+    </div>
   </div>
 </div>
 
@@ -385,6 +390,8 @@
   const ampmSettingsRow = document.getElementById("ampmSettingsRow");
   const soundOnButton = document.getElementById("soundOnButton");
   const soundOffButton = document.getElementById("soundOffButton");
+  const bgmOnButton = document.getElementById("bgmOnButton");
+  const bgmOffButton = document.getElementById("bgmOffButton");
 
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -396,6 +403,7 @@
   const TIME_FORMAT_KEY = "coinHunterTimeFormat";
   const SHOW_AMPM_KEY = "coinHunterShowAmPm";
   const SOUND_ENABLED_KEY = "coinHunterSoundEnabled";
+  const BGM_ENABLED_KEY = "coinHunterBgmEnabled";
   const API_BASE = "api";
 
   const keys = {};
@@ -426,12 +434,41 @@
   let timeFormat = localStorage.getItem(TIME_FORMAT_KEY) === "12" ? "12" : "24";
   let showAmPm = localStorage.getItem(SHOW_AMPM_KEY) !== "0";
   let soundEnabled = localStorage.getItem(SOUND_ENABLED_KEY) !== "0";
+  let bgmEnabled = localStorage.getItem(BGM_ENABLED_KEY) !== "0";
   let audioContext = null;
+  let bgmGainNode = null;
+  let bgmMode = null;
+  let bgmStep = 0;
+  let bgmNextNoteTime = 0;
 
   const INVINCIBLE_DURATION_MS = 10000;
   const INVINCIBLE_ITEM_CHANCE = 0.1;
   const INVINCIBLE_ITEM_LIFETIME_MS = 5000;
   const STAR_COOLDOWN_COINS = 3;
+
+  const BGM_PATTERNS = {
+    normal: {
+      stepSec: 0.16,
+      melody: [
+        523, 659, 784, 659, 587, 659, 523, 392, 440, 523, 659, 523, 440, 392,
+        330, 392
+      ],
+      bass: [
+        131, 0, 131, 0, 165, 0, 165, 0, 175, 0, 175, 0, 196, 0, 196, 0
+      ]
+    },
+    invincible: {
+      stepSec: 0.1,
+      melody: [
+        1046, 1175, 1318, 1568, 1318, 1175, 1046, 988, 1046, 1175, 1397, 1568,
+        1760, 1568, 1397, 1175
+      ],
+      bass: [
+        262, 330, 262, 392, 262, 330, 262, 440, 294, 370, 294, 440, 330, 415,
+        330, 494
+      ]
+    }
+  };
 
   const clearConfirmButtons = {
     yes: { x: 70, y: 140, width: 70, height: 24 },
@@ -439,13 +476,9 @@
   };
 
   /*
-   * 効果音（Web Audio）
+   * 効果音 / BGM（Web Audio）
    */
-  function ensureAudio() {
-    if (!soundEnabled) {
-      return null;
-    }
-
+  function ensureAudioContext() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
 
     if (!AudioCtx) {
@@ -460,13 +493,27 @@
       audioContext.resume();
     }
 
+    if (!bgmGainNode) {
+      bgmGainNode = audioContext.createGain();
+      bgmGainNode.gain.value = 0.045;
+      bgmGainNode.connect(audioContext.destination);
+    }
+
     return audioContext;
   }
 
-  function playTone(frequency, duration, type, volume, when) {
-    const ctxAudio = ensureAudio();
+  function ensureAudio() {
+    if (!soundEnabled && !bgmEnabled) {
+      return null;
+    }
 
-    if (!ctxAudio) {
+    return ensureAudioContext();
+  }
+
+  function playTone(frequency, duration, type, volume, when, destination) {
+    const ctxAudio = ensureAudioContext();
+
+    if (!ctxAudio || !frequency) {
       return;
     }
 
@@ -481,7 +528,7 @@
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
     oscillator.connect(gain);
-    gain.connect(ctxAudio.destination);
+    gain.connect(destination || ctxAudio.destination);
     oscillator.start(start);
     oscillator.stop(start + duration + 0.02);
   }
@@ -490,6 +537,8 @@
     if (!soundEnabled) {
       return;
     }
+
+    ensureAudioContext();
 
     if (name === "coin") {
       playTone(880, 0.06, "square", 0.07);
@@ -544,10 +593,83 @@
     }
   }
 
+  function getDesiredBgmMode() {
+    if (!bgmEnabled || gameOver || paused || confirmingClearData) {
+      return null;
+    }
+
+    if (invincibleRemainingMs > 0 || invincibleRemainingMs2 > 0) {
+      return "invincible";
+    }
+
+    return "normal";
+  }
+
+  function scheduleBgmStep(pattern, stepIndex, absoluteTime) {
+    const when = Math.max(0, absoluteTime - audioContext.currentTime);
+    const melody = pattern.melody[stepIndex % pattern.melody.length];
+    const bass = pattern.bass[stepIndex % pattern.bass.length];
+
+    if (melody) {
+      playTone(melody, pattern.stepSec * 0.85, "square", 0.035, when, bgmGainNode);
+    }
+
+    if (bass) {
+      playTone(bass, pattern.stepSec * 0.9, "triangle", 0.03, when, bgmGainNode);
+    }
+  }
+
+  function startBgm(mode) {
+    const ctxAudio = ensureAudioContext();
+
+    if (!ctxAudio || !BGM_PATTERNS[mode]) {
+      return;
+    }
+
+    bgmMode = mode;
+    bgmStep = 0;
+    bgmNextNoteTime = ctxAudio.currentTime + 0.05;
+  }
+
+  function stopBgm() {
+    bgmMode = null;
+    bgmStep = 0;
+    bgmNextNoteTime = 0;
+  }
+
+  function tickBgm() {
+    if (!bgmMode || !bgmEnabled || !audioContext || !bgmGainNode) {
+      return;
+    }
+
+    const pattern = BGM_PATTERNS[bgmMode];
+
+    while (bgmNextNoteTime < audioContext.currentTime + 0.12) {
+      scheduleBgmStep(pattern, bgmStep, bgmNextNoteTime);
+      bgmNextNoteTime += pattern.stepSec;
+      bgmStep += 1;
+    }
+  }
+
+  function syncBgm() {
+    const desired = getDesiredBgmMode();
+
+    if (desired !== bgmMode) {
+      stopBgm();
+
+      if (desired) {
+        startBgm(desired);
+      }
+    }
+
+    tickBgm();
+  }
+
   window.addEventListener(
     "pointerdown",
     () => {
-      ensureAudio();
+      ensureAudioContext();
+      syncBgm();
     },
     { once: true }
   );
@@ -555,7 +677,8 @@
   window.addEventListener(
     "keydown",
     () => {
-      ensureAudio();
+      ensureAudioContext();
+      syncBgm();
     },
     { once: true }
   );
@@ -1306,15 +1429,19 @@
     ampmSettingsRow.classList.toggle("disabled", timeFormat !== "12");
     soundOnButton.classList.toggle("active", soundEnabled);
     soundOffButton.classList.toggle("active", !soundEnabled);
+    bgmOnButton.classList.toggle("active", bgmEnabled);
+    bgmOffButton.classList.toggle("active", !bgmEnabled);
   }
 
   function saveTimeSettings() {
     localStorage.setItem(TIME_FORMAT_KEY, timeFormat);
     localStorage.setItem(SHOW_AMPM_KEY, showAmPm ? "1" : "0");
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
+    localStorage.setItem(BGM_ENABLED_KEY, bgmEnabled ? "1" : "0");
     updateSettingsView();
     updateLoginTimeLabel();
     renderHistoryList();
+    syncBgm();
   }
 
   function updateLoginTimeLabel() {
@@ -1335,6 +1462,7 @@
 
     gameOver = true;
     runEndedAt = Date.now();
+    stopBgm();
     playSound("gameOver");
     recordPlayHistory();
   }
@@ -1593,6 +1721,7 @@
   function gameLoop() {
     update();
     draw();
+    syncBgm();
 
     animationId = requestAnimationFrame(gameLoop);
   }
@@ -2105,6 +2234,31 @@
 
   ampmOffButton.addEventListener("click", () => {
     showAmPm = false;
+    saveTimeSettings();
+  });
+
+  soundOnButton.addEventListener("click", () => {
+    soundEnabled = true;
+    saveTimeSettings();
+    ensureAudio();
+    playSound("coin");
+  });
+
+  soundOffButton.addEventListener("click", () => {
+    soundEnabled = false;
+    saveTimeSettings();
+  });
+
+  bgmOnButton.addEventListener("click", () => {
+    bgmEnabled = true;
+    saveTimeSettings();
+    ensureAudioContext();
+    syncBgm();
+  });
+
+  bgmOffButton.addEventListener("click", () => {
+    bgmEnabled = false;
+    stopBgm();
     saveTimeSettings();
   });
 
