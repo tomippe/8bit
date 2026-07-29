@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.15">
+  <meta name="app-version" content="1.0.17">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1681,7 +1681,6 @@
 
       playHistory = Array.isArray(data.history) ? data.history : [];
       renderHistoryList();
-      setAccountStatus("履歴を削除しました", "ok");
     } catch (error) {
       setAccountStatus("履歴の削除に失敗しました", "error");
     }
