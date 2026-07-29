@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.18">
+  <meta name="app-version" content="1.0.19">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -349,6 +349,11 @@
       <button type="button" id="ampmOnButton">する</button>
       <button type="button" id="ampmOffButton">しない</button>
     </div>
+    <div class="settings-row">
+      <label>効果音</label>
+      <button type="button" id="soundOnButton">ON</button>
+      <button type="button" id="soundOffButton">OFF</button>
+    </div>
   </div>
 </div>
 
@@ -378,6 +383,8 @@
   const ampmOnButton = document.getElementById("ampmOnButton");
   const ampmOffButton = document.getElementById("ampmOffButton");
   const ampmSettingsRow = document.getElementById("ampmSettingsRow");
+  const soundOnButton = document.getElementById("soundOnButton");
+  const soundOffButton = document.getElementById("soundOffButton");
 
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -388,6 +395,7 @@
   const HIGH_SCORE_2P_KEY = "coinHunterHighScore2P";
   const TIME_FORMAT_KEY = "coinHunterTimeFormat";
   const SHOW_AMPM_KEY = "coinHunterShowAmPm";
+  const SOUND_ENABLED_KEY = "coinHunterSoundEnabled";
   const API_BASE = "api";
 
   const keys = {};
@@ -417,6 +425,8 @@
   let playHistory = [];
   let timeFormat = localStorage.getItem(TIME_FORMAT_KEY) === "12" ? "12" : "24";
   let showAmPm = localStorage.getItem(SHOW_AMPM_KEY) !== "0";
+  let soundEnabled = localStorage.getItem(SOUND_ENABLED_KEY) !== "0";
+  let audioContext = null;
 
   const INVINCIBLE_DURATION_MS = 10000;
   const INVINCIBLE_ITEM_CHANCE = 0.1;
@@ -427,6 +437,128 @@
     yes: { x: 70, y: 140, width: 70, height: 24 },
     no: { x: 180, y: 140, width: 70, height: 24 }
   };
+
+  /*
+   * 効果音（Web Audio）
+   */
+  function ensureAudio() {
+    if (!soundEnabled) {
+      return null;
+    }
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioCtx) {
+      return null;
+    }
+
+    if (!audioContext) {
+      audioContext = new AudioCtx();
+    }
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+
+    return audioContext;
+  }
+
+  function playTone(frequency, duration, type, volume, when) {
+    const ctxAudio = ensureAudio();
+
+    if (!ctxAudio) {
+      return;
+    }
+
+    const start = ctxAudio.currentTime + (when || 0);
+    const oscillator = ctxAudio.createOscillator();
+    const gain = ctxAudio.createGain();
+
+    oscillator.type = type || "square";
+    oscillator.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume || 0.08, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+    oscillator.connect(gain);
+    gain.connect(ctxAudio.destination);
+    oscillator.start(start);
+    oscillator.stop(start + duration + 0.02);
+  }
+
+  function playSound(name) {
+    if (!soundEnabled) {
+      return;
+    }
+
+    if (name === "coin") {
+      playTone(880, 0.06, "square", 0.07);
+      playTone(1320, 0.08, "square", 0.05, 0.05);
+      return;
+    }
+
+    if (name === "starSpawn") {
+      playTone(660, 0.05, "triangle", 0.05);
+      playTone(990, 0.06, "triangle", 0.05, 0.05);
+      playTone(1320, 0.08, "triangle", 0.04, 0.1);
+      return;
+    }
+
+    if (name === "starGet") {
+      playTone(523, 0.08, "square", 0.07);
+      playTone(659, 0.08, "square", 0.07, 0.07);
+      playTone(784, 0.08, "square", 0.07, 0.14);
+      playTone(1046, 0.14, "square", 0.06, 0.22);
+      return;
+    }
+
+    if (name === "enemyHit") {
+      playTone(220, 0.05, "sawtooth", 0.06);
+      playTone(180, 0.08, "sawtooth", 0.05, 0.04);
+      return;
+    }
+
+    if (name === "gameOver") {
+      playTone(392, 0.12, "square", 0.07);
+      playTone(330, 0.12, "square", 0.07, 0.12);
+      playTone(262, 0.18, "square", 0.07, 0.24);
+      playTone(196, 0.28, "square", 0.06, 0.4);
+      return;
+    }
+
+    if (name === "highScore") {
+      playTone(784, 0.08, "square", 0.06);
+      playTone(988, 0.08, "square", 0.06, 0.08);
+      playTone(1175, 0.14, "square", 0.06, 0.16);
+      return;
+    }
+
+    if (name === "pause") {
+      playTone(440, 0.05, "triangle", 0.04);
+      return;
+    }
+
+    if (name === "enemySpawn") {
+      playTone(150, 0.1, "sawtooth", 0.04);
+      return;
+    }
+  }
+
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      ensureAudio();
+    },
+    { once: true }
+  );
+
+  window.addEventListener(
+    "keydown",
+    () => {
+      ensureAudio();
+    },
+    { once: true }
+  );
 
   /*
    * プレイヤー
@@ -524,6 +656,7 @@
       !confirmingClearData
     ) {
       paused = !paused;
+      playSound("pause");
 
       if (paused) {
         keys.ArrowUp = false;
@@ -749,6 +882,7 @@
 
     invincibleItem.active = true;
     invincibleItem.remainingMs = INVINCIBLE_ITEM_LIFETIME_MS;
+    playSound("starSpawn");
   }
 
   function getActivePlayers() {
@@ -907,17 +1041,22 @@
       score++;
     }
 
-    const best = leadingScore();
+    playSound("coin");
 
-    if (best > highScore) {
+    const best = leadingScore();
+    const isNewHigh = best > highScore;
+
+    if (isNewHigh) {
       highScore = best;
       saveHighScore(highScore);
+      playSound("highScore");
     }
 
     moveCoin();
 
     if (totalScore() % 3 === 0) {
       createEnemy();
+      playSound("enemySpawn");
     }
 
     if (
@@ -950,6 +1089,7 @@
           invincibleItem.remainingMs = 0;
           setPlayerInvincibleMs(target, INVINCIBLE_DURATION_MS);
           starCooldownCoins = STAR_COOLDOWN_COINS;
+          playSound("starGet");
           break;
         }
       }
@@ -967,6 +1107,7 @@
         if (getPlayerInvincibleMs(target) > 0) {
           if (isPlayerChargingEnemy(target, enemy)) {
             enemies.splice(i, 1);
+            playSound("enemyHit");
             removed = true;
             break;
           }
@@ -1163,11 +1304,14 @@
     ampmOnButton.classList.toggle("active", showAmPm);
     ampmOffButton.classList.toggle("active", !showAmPm);
     ampmSettingsRow.classList.toggle("disabled", timeFormat !== "12");
+    soundOnButton.classList.toggle("active", soundEnabled);
+    soundOffButton.classList.toggle("active", !soundEnabled);
   }
 
   function saveTimeSettings() {
     localStorage.setItem(TIME_FORMAT_KEY, timeFormat);
     localStorage.setItem(SHOW_AMPM_KEY, showAmPm ? "1" : "0");
+    localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
     updateSettingsView();
     updateLoginTimeLabel();
     renderHistoryList();
@@ -1191,6 +1335,7 @@
 
     gameOver = true;
     runEndedAt = Date.now();
+    playSound("gameOver");
     recordPlayHistory();
   }
 
