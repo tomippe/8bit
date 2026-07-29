@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.13">
+  <meta name="app-version" content="1.0.14">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -172,6 +172,70 @@
       border-color: #e53935;
       color: white;
     }
+
+    .history-panel {
+      display: none;
+      margin-top: 20px;
+      max-width: 640px;
+      width: 95vw;
+      text-align: left;
+      border-top: 2px solid #444;
+      padding-top: 12px;
+    }
+
+    .history-panel.visible {
+      display: block;
+    }
+
+    .history-panel h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      letter-spacing: 1px;
+    }
+
+    .history-list {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #333;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .history-item-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .history-item-meta {
+      color: #aaa;
+    }
+
+    .history-delete {
+      margin: 0;
+      padding: 2px 8px;
+      font-size: 14px;
+      line-height: 1;
+      border-width: 2px;
+      flex-shrink: 0;
+    }
+
+    .history-delete:hover {
+      background: #e53935;
+      border-color: #e53935;
+      color: white;
+    }
+
+    .history-empty {
+      color: #777;
+      font-size: 12px;
+    }
   </style>
 </head>
 
@@ -208,6 +272,13 @@
   <button id="restartButton">RESTART</button>
   <button id="twoPlayerButton">2P</button>
   <button id="clearDataButton">データ削除</button>
+
+  <div id="historyPanel" class="history-panel">
+    <h2>履歴</h2>
+    <div id="historyList" class="history-list">
+      <div class="history-empty">ログインすると履歴が残ります</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -228,6 +299,8 @@
   const deleteAccountButton = document.getElementById("deleteAccountButton");
   const authPanel = document.getElementById("authPanel");
   const accountStatus = document.getElementById("accountStatus");
+  const historyPanel = document.getElementById("historyPanel");
+  const historyList = document.getElementById("historyList");
 
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -247,6 +320,7 @@
   let highScore = highScore1P;
   let highScoreAtStart = highScore;
   let gameOver = false;
+  let historyRecorded = false;
   let confirmingClearData = false;
   let paused = false;
   let animationId = null;
@@ -255,9 +329,12 @@
   let invincibleRemainingMs2 = 0;
   let starCooldownCoins = 0;
   let runTimeMs = 0;
+  let runStartedAt = Date.now();
+  let runEndedAt = 0;
   let twoPlayerMode = false;
   let loggedInUsername = null;
   let authPanelOpen = false;
+  let playHistory = [];
 
   const INVINCIBLE_DURATION_MS = 10000;
   const INVINCIBLE_ITEM_CHANCE = 0.1;
@@ -812,7 +889,7 @@
             break;
           }
         } else {
-          gameOver = true;
+          triggerGameOver();
           return;
         }
       }
@@ -959,9 +1036,39 @@
 
   function formatRunTime(ms) {
     const totalMs = Math.max(0, Math.floor(ms));
-    const seconds = Math.floor(totalMs / 1000);
     const millis = String(totalMs % 1000).padStart(3, "0");
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const seconds = totalSeconds % 60;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const minutes = totalMinutes % 60;
+    const hours = Math.floor(totalMinutes / 60);
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${millis}`;
+    }
+
+    if (totalMinutes > 0) {
+      return `${totalMinutes}:${String(seconds).padStart(2, "0")}.${millis}`;
+    }
+
     return `${seconds}.${millis}`;
+  }
+
+  function formatClockHm(timestamp) {
+    const date = new Date(timestamp);
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  function triggerGameOver() {
+    if (gameOver) {
+      return;
+    }
+
+    gameOver = true;
+    runEndedAt = Date.now();
+    recordPlayHistory();
   }
 
   /*
@@ -976,16 +1083,19 @@
 
     const textY = SCORE_BAR_HEIGHT / 2;
     const isHighScoreUpdating = leadingScore() > highScoreAtStart;
+    const total = score + score2;
 
     ctx.fillStyle = "white";
 
     if (twoPlayerMode) {
-      ctx.fillText(`SC ${score}`, 4, textY);
+      ctx.fillText(`SC ${score}`, 2, textY);
       ctx.fillStyle = "#81c784";
-      ctx.fillText(`2PSC ${score2}`, 52, textY);
+      ctx.fillText(`2PSC ${score2}`, 42, textY);
+      ctx.fillStyle = "#ffcc00";
+      ctx.fillText(`TOT ${total}`, 96, textY);
       ctx.fillStyle = "white";
-      ctx.fillText(`E ${enemies.length}`, 118, textY);
-      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 150, textY);
+      ctx.fillText(`E ${enemies.length}`, 140, textY);
+      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 168, textY);
     } else {
       ctx.fillText(`SCORE ${score}`, 4, textY);
       ctx.fillText(`ENEMY ${enemies.length}`, 78, textY);
@@ -995,13 +1105,13 @@
     if (invincibleRemainingMs > 0) {
       const seconds = Math.ceil(invincibleRemainingMs / 1000);
       ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`P1 ${seconds}`, twoPlayerMode ? 220 : 230, textY);
+      ctx.fillText(`P1 ${seconds}`, twoPlayerMode ? 225 : 230, textY);
     }
 
     if (twoPlayerMode && invincibleRemainingMs2 > 0) {
       const seconds = Math.ceil(invincibleRemainingMs2 / 1000);
       ctx.fillStyle = "#81c784";
-      ctx.fillText(`P2 ${seconds}`, 255, textY);
+      ctx.fillText(`P2 ${seconds}`, 258, textY);
     }
 
     const hiText = twoPlayerMode
@@ -1036,34 +1146,44 @@
 
     ctx.fillStyle = "#ff3b30";
     ctx.font = '16px "DotGothic16", monospace';
-    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 20);
+    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 28);
 
     ctx.fillStyle = "white";
     ctx.font = '10px "DotGothic16", monospace';
 
     if (twoPlayerMode) {
       ctx.fillText(
-        `SC: ${score}  2PSC: ${score2}`,
+        `SC: ${score}  2PSC: ${score2}  TOT: ${score + score2}`,
         WIDTH / 2,
-        HEIGHT / 2 + 2
+        HEIGHT / 2 - 6
+      );
+      ctx.fillText(
+        `HI2: ${highScore}`,
+        WIDTH / 2,
+        HEIGHT / 2 + 8
       );
     } else {
       ctx.fillText(
-        `SCORE: ${score}`,
+        `SCORE: ${score}  HI: ${highScore}`,
         WIDTH / 2,
-        HEIGHT / 2 + 2
+        HEIGHT / 2 - 6
       );
     }
 
     ctx.fillText(
       `TIME: ${formatRunTime(runTimeMs)}`,
       WIDTH / 2,
-      HEIGHT / 2 + 16
+      HEIGHT / 2 + 22
+    );
+    ctx.fillText(
+      `${formatClockHm(runStartedAt)}〜${formatClockHm(runEndedAt || Date.now())}`,
+      WIDTH / 2,
+      HEIGHT / 2 + 36
     );
     ctx.fillText(
       "PRESS SPACE TO RESTART",
       WIDTH / 2,
-      HEIGHT / 2 + 32
+      HEIGHT / 2 + 52
     );
 
     ctx.textAlign = "left";
@@ -1217,6 +1337,7 @@
     score2 = 0;
     highScoreAtStart = highScore;
     gameOver = false;
+    historyRecorded = false;
     confirmingClearData = false;
     paused = false;
     invincibleRemainingMs = 0;
@@ -1225,6 +1346,8 @@
     invincibleItem.remainingMs = 0;
     starCooldownCoins = 0;
     runTimeMs = 0;
+    runStartedAt = Date.now();
+    runEndedAt = 0;
     lastFrameTime = performance.now();
 
     player.x = 40;
@@ -1302,11 +1425,140 @@
       accountToggleButton.style.display = "none";
       logoutButton.style.display = "inline-block";
       deleteAccountButton.style.display = "inline-block";
+      historyPanel.classList.add("visible");
       setAuthPanelOpen(false);
     } else {
       accountToggleButton.style.display = "inline-block";
       logoutButton.style.display = "none";
       deleteAccountButton.style.display = "none";
+      historyPanel.classList.remove("visible");
+      playHistory = [];
+      renderHistoryList();
+    }
+  }
+
+  function renderHistoryList() {
+    if (!loggedInUsername) {
+      historyList.innerHTML =
+        '<div class="history-empty">ログインすると履歴が残ります</div>';
+      return;
+    }
+
+    if (!playHistory.length) {
+      historyList.innerHTML =
+        '<div class="history-empty">まだ履歴がありません</div>';
+      return;
+    }
+
+    historyList.innerHTML = playHistory
+      .map((entry) => {
+        const modeLabel = entry.mode === "2p" ? "2P" : "1P";
+        const duration = formatRunTime(entry.durationMs || 0);
+        const clock = `${formatClockHm(entry.startedAt)}〜${formatClockHm(entry.endedAt)}`;
+        let scores = "";
+
+        if (entry.mode === "2p") {
+          scores =
+            `SC ${entry.score} / 2PSC ${entry.score2} / TOTALSC ${entry.totalScore} / ` +
+            `HI2 ${entry.highScore}`;
+        } else {
+          scores = `SCORE ${entry.score} / HI ${entry.highScore}`;
+        }
+
+        return `
+          <div class="history-item" data-id="${entry.id}">
+            <div class="history-item-body">
+              <div>[${modeLabel}] ${scores}</div>
+              <div class="history-item-meta">時間 ${duration}　${clock}</div>
+            </div>
+            <button type="button" class="history-delete" data-id="${entry.id}" aria-label="削除">×</button>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  async function loadPlayHistory() {
+    if (!loggedInUsername) {
+      playHistory = [];
+      renderHistoryList();
+      return;
+    }
+
+    try {
+      const data = await apiRequest("history.php", { method: "GET" });
+
+      if (!data.ok) {
+        setAccountStatus(data.error || "履歴の取得に失敗しました", "error");
+        return;
+      }
+
+      playHistory = Array.isArray(data.history) ? data.history : [];
+      renderHistoryList();
+    } catch (error) {
+      setAccountStatus("履歴の取得に失敗しました", "error");
+    }
+  }
+
+  async function recordPlayHistory() {
+    if (!loggedInUsername || historyRecorded) {
+      return;
+    }
+
+    historyRecorded = true;
+
+    const payload = {
+      mode: twoPlayerMode ? "2p" : "1p",
+      score,
+      score2: twoPlayerMode ? score2 : 0,
+      totalScore: twoPlayerMode ? score + score2 : score,
+      highScore,
+      durationMs: Math.floor(runTimeMs),
+      startedAt: runStartedAt,
+      endedAt: runEndedAt || Date.now()
+    };
+
+    try {
+      const data = await apiRequest("history.php", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      if (!data.ok) {
+        historyRecorded = false;
+        setAccountStatus(data.error || "履歴の保存に失敗しました", "error");
+        return;
+      }
+
+      playHistory = Array.isArray(data.history) ? data.history : playHistory;
+      renderHistoryList();
+    } catch (error) {
+      historyRecorded = false;
+      setAccountStatus("履歴の保存に失敗しました", "error");
+    }
+  }
+
+  async function deletePlayHistory(id) {
+    if (!loggedInUsername || !id) {
+      return;
+    }
+
+    try {
+      const data = await apiRequest("history.php", {
+        method: "DELETE",
+        body: JSON.stringify({ id })
+      });
+
+      if (!data.ok) {
+        setAccountStatus(data.error || "履歴の削除に失敗しました", "error");
+        return;
+      }
+
+      playHistory = Array.isArray(data.history) ? data.history : [];
+      renderHistoryList();
+      setAccountStatus("履歴を削除しました", "ok");
+    } catch (error) {
+      setAccountStatus("履歴の削除に失敗しました", "error");
     }
   }
 
@@ -1455,6 +1707,7 @@
 
       await syncHighScoreWithServer(data.highScore, data.highScore2P);
       updateAccountView();
+      await loadPlayHistory();
       setAccountStatus(
         action === "register"
           ? "アカウントを作成してログインしました"
@@ -1484,6 +1737,7 @@
       }
 
       loggedInUsername = null;
+      playHistory = [];
       updateAccountView();
       setAccountStatus("ログアウトしました", "ok");
     } catch (error) {
@@ -1543,12 +1797,23 @@
       loggedInUsername = data.username;
       await syncHighScoreWithServer(data.highScore, data.highScore2P);
       updateAccountView();
+      await loadPlayHistory();
       setAccountStatus("アカウントのハイスコアを読み込みました", "ok");
     } catch (error) {
       loggedInUsername = null;
       updateAccountView();
     }
   }
+
+  historyList.addEventListener("click", (event) => {
+    const button = event.target.closest(".history-delete");
+
+    if (!button) {
+      return;
+    }
+
+    deletePlayHistory(button.getAttribute("data-id"));
+  });
 
   accountToggleButton.addEventListener("click", () => {
     setAuthPanelOpen(!authPanelOpen);
