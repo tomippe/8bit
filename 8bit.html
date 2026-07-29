@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.14">
+  <meta name="app-version" content="1.0.15">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -236,6 +236,53 @@
       color: #777;
       font-size: 12px;
     }
+
+    .settings-panel {
+      margin-top: 16px;
+      max-width: 640px;
+      width: 95vw;
+      text-align: left;
+      border-top: 2px solid #444;
+      padding-top: 12px;
+    }
+
+    .settings-panel h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      letter-spacing: 1px;
+    }
+
+    .settings-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 16px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+
+    .settings-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .settings-row input[type="checkbox"],
+    .settings-row input[type="radio"] {
+      accent-color: #7ef9ff;
+    }
+
+    .login-time {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #7ef9ff;
+      display: none;
+    }
+
+    .login-time.visible {
+      display: block;
+    }
   </style>
 </head>
 
@@ -256,6 +303,7 @@
   </div>
 
   <div id="accountStatus" class="account-status"></div>
+  <div id="loginTimeLabel" class="login-time"></div>
 </div>
 
 <div class="game-container">
@@ -272,6 +320,21 @@
   <button id="restartButton">RESTART</button>
   <button id="twoPlayerButton">2P</button>
   <button id="clearDataButton">データ削除</button>
+
+  <div class="settings-panel">
+    <h2>設定</h2>
+    <div class="settings-row">
+      <span>時刻表記</span>
+      <label><input type="radio" name="hourCycle" value="24" id="hourCycle24"> 24時間</label>
+      <label><input type="radio" name="hourCycle" value="12" id="hourCycle12"> 12時間</label>
+    </div>
+    <div class="settings-row">
+      <label>
+        <input type="checkbox" id="showAmPmCheckbox">
+        履歴などで AM / PM を表示する
+      </label>
+    </div>
+  </div>
 
   <div id="historyPanel" class="history-panel">
     <h2>履歴</h2>
@@ -301,6 +364,10 @@
   const accountStatus = document.getElementById("accountStatus");
   const historyPanel = document.getElementById("historyPanel");
   const historyList = document.getElementById("historyList");
+  const loginTimeLabel = document.getElementById("loginTimeLabel");
+  const hourCycle24 = document.getElementById("hourCycle24");
+  const hourCycle12 = document.getElementById("hourCycle12");
+  const showAmPmCheckbox = document.getElementById("showAmPmCheckbox");
 
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -309,6 +376,7 @@
   const SCORE_BAR_HEIGHT = 14;
   const HIGH_SCORE_KEY = "coinHunterHighScore";
   const HIGH_SCORE_2P_KEY = "coinHunterHighScore2P";
+  const SETTINGS_KEY = "coinHunterSettings";
   const API_BASE = "api";
 
   const keys = {};
@@ -333,8 +401,10 @@
   let runEndedAt = 0;
   let twoPlayerMode = false;
   let loggedInUsername = null;
+  let loggedInAt = 0;
   let authPanelOpen = false;
   let playHistory = [];
+  let timeSettings = loadTimeSettings();
 
   const INVINCIBLE_DURATION_MS = 10000;
   const INVINCIBLE_ITEM_CHANCE = 0.1;
@@ -1034,6 +1104,74 @@
     }
   }
 
+  function loadTimeSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+
+      if (!raw) {
+        return { hour12: false, showAmPm: false };
+      }
+
+      const data = JSON.parse(raw);
+
+      return {
+        hour12: Boolean(data.hour12),
+        showAmPm: Boolean(data.showAmPm)
+      };
+    } catch (error) {
+      return { hour12: false, showAmPm: false };
+    }
+  }
+
+  function saveTimeSettings() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(timeSettings));
+  }
+
+  function applyTimeSettingsToForm() {
+    hourCycle12.checked = timeSettings.hour12;
+    hourCycle24.checked = !timeSettings.hour12;
+    showAmPmCheckbox.checked = timeSettings.showAmPm;
+  }
+
+  function formatClockHm(timestamp) {
+    const date = new Date(timestamp);
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    let suffix = "";
+
+    if (timeSettings.hour12) {
+      const isPm = hours >= 12;
+      hours = hours % 12;
+
+      if (hours === 0) {
+        hours = 12;
+      }
+
+      if (timeSettings.showAmPm) {
+        suffix = isPm ? " PM" : " AM";
+      }
+
+      return `${hours}:${minutes}${suffix}`;
+    }
+
+    if (timeSettings.showAmPm) {
+      suffix = hours >= 12 ? " PM" : " AM";
+    }
+
+    return `${String(hours).padStart(2, "0")}:${minutes}${suffix}`;
+  }
+
+  function updateLoginTimeLabel() {
+    if (!loggedInUsername || !loggedInAt) {
+      loginTimeLabel.classList.remove("visible");
+      loginTimeLabel.textContent = "";
+      return;
+    }
+
+    loginTimeLabel.textContent = `ログイン ${formatClockHm(loggedInAt)}`;
+    loginTimeLabel.classList.add("visible");
+  }
+
   function formatRunTime(ms) {
     const totalMs = Math.max(0, Math.floor(ms));
     const millis = String(totalMs % 1000).padStart(3, "0");
@@ -1052,13 +1190,6 @@
     }
 
     return `${seconds}.${millis}`;
-  }
-
-  function formatClockHm(timestamp) {
-    const date = new Date(timestamp);
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${hours}:${minutes}`;
   }
 
   function triggerGameOver() {
@@ -1432,9 +1563,12 @@
       logoutButton.style.display = "none";
       deleteAccountButton.style.display = "none";
       historyPanel.classList.remove("visible");
+      loggedInAt = 0;
       playHistory = [];
       renderHistoryList();
     }
+
+    updateLoginTimeLabel();
   }
 
   function renderHistoryList() {
@@ -1702,6 +1836,7 @@
       }
 
       loggedInUsername = data.username;
+      loggedInAt = Date.now();
       passwordInput.value = "";
       setAuthPanelOpen(false);
 
@@ -1737,6 +1872,7 @@
       }
 
       loggedInUsername = null;
+      loggedInAt = 0;
       playHistory = [];
       updateAccountView();
       setAccountStatus("ログアウトしました", "ok");
@@ -1764,6 +1900,7 @@
       }
 
       loggedInUsername = null;
+      loggedInAt = 0;
       localStorage.removeItem(HIGH_SCORE_KEY);
       localStorage.removeItem(HIGH_SCORE_2P_KEY);
       highScore1P = 0;
@@ -1795,15 +1932,30 @@
       }
 
       loggedInUsername = data.username;
+      loggedInAt = Date.now();
       await syncHighScoreWithServer(data.highScore, data.highScore2P);
       updateAccountView();
       await loadPlayHistory();
       setAccountStatus("アカウントのハイスコアを読み込みました", "ok");
     } catch (error) {
       loggedInUsername = null;
+      loggedInAt = 0;
       updateAccountView();
     }
   }
+
+  function onTimeSettingsChanged() {
+    timeSettings.hour12 = hourCycle12.checked;
+    timeSettings.showAmPm = showAmPmCheckbox.checked;
+    saveTimeSettings();
+    updateLoginTimeLabel();
+    renderHistoryList();
+  }
+
+  hourCycle12.addEventListener("change", onTimeSettingsChanged);
+  hourCycle24.addEventListener("change", onTimeSettingsChanged);
+  showAmPmCheckbox.addEventListener("change", onTimeSettingsChanged);
+  applyTimeSettingsToForm();
 
   historyList.addEventListener("click", (event) => {
     const button = event.target.closest(".history-delete");
