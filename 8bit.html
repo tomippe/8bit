@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.25">
+  <meta name="app-version" content="1.0.26">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -420,6 +420,7 @@
   let paused = false;
   let countdownPhase = null;
   let countdownPhaseStartedAt = 0;
+  let needsStartGesture = true;
   let animationId = null;
   let lastFrameTime = performance.now();
   let invincibleRemainingMs = 0;
@@ -516,15 +517,18 @@
       return Promise.resolve(null);
     }
 
-    if (ctxAudio.state === "suspended") {
-      return ctxAudio.resume().then(() => {
-        syncBgm();
-        return ctxAudio;
-      });
-    }
+    const resumePromise =
+      ctxAudio.state === "suspended" ? ctxAudio.resume() : Promise.resolve();
 
-    syncBgm();
-    return Promise.resolve(ctxAudio);
+    return resumePromise
+      .then(() => {
+        if (ctxAudio.state === "running") {
+          syncBgm();
+        }
+
+        return ctxAudio;
+      })
+      .catch(() => ctxAudio);
   }
 
   function ensureAudio() {
@@ -560,13 +564,7 @@
     oscillator.stop(start + noteLength + 0.03);
   }
 
-  function playSound(name) {
-    if (!soundEnabled) {
-      return;
-    }
-
-    unlockAudio();
-
+  function emitSound(name) {
     if (name === "coin") {
       playTone(880, 0.06, "square", 0.07);
       playTone(1320, 0.08, "square", 0.05, 0.05);
@@ -642,13 +640,28 @@
     }
   }
 
+  function playSound(name) {
+    if (!soundEnabled) {
+      return;
+    }
+
+    unlockAudio().then((ctxAudio) => {
+      if (!soundEnabled || !ctxAudio || ctxAudio.state !== "running") {
+        return;
+      }
+
+      emitSound(name);
+    });
+  }
+
   function getDesiredBgmMode() {
     if (
       !bgmEnabled ||
       gameOver ||
       paused ||
       confirmingClearData ||
-      countdownPhase !== null
+      countdownPhase !== null ||
+      needsStartGesture
     ) {
       return null;
     }
@@ -808,7 +821,16 @@
   }
 
   function onUserGestureForAudio() {
-    unlockAudio();
+    unlockAudio().then((ctxAudio) => {
+      if (!ctxAudio || ctxAudio.state !== "running") {
+        return;
+      }
+
+      if (needsStartGesture) {
+        needsStartGesture = false;
+        beginCountdown();
+      }
+    });
   }
 
   window.addEventListener("pointerdown", onUserGestureForAudio);
@@ -909,7 +931,8 @@
       (event.key === "p" || event.key === "P") &&
       !gameOver &&
       !confirmingClearData &&
-      countdownPhase === null
+      countdownPhase === null &&
+      !needsStartGesture
     ) {
       paused = !paused;
       playSound("pause");
@@ -950,7 +973,7 @@
   }
 
   function pauseForBackground() {
-    if (gameOver || confirmingClearData || paused) {
+    if (gameOver || confirmingClearData || paused || needsStartGesture) {
       return;
     }
 
@@ -965,11 +988,17 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       pauseForBackground();
+    } else {
+      unlockAudio();
     }
   });
 
   window.addEventListener("blur", () => {
     pauseForBackground();
+  });
+
+  window.addEventListener("focus", () => {
+    unlockAudio();
   });
 
   restartButton.addEventListener("click", () => {
@@ -1876,13 +1905,26 @@
     ctx.textAlign = "left";
   }
 
+  function drawClickToStart() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ffe566";
+    ctx.font = '14px "DotGothic16", monospace';
+    ctx.fillText("CLICK / TAP TO START", WIDTH / 2, HEIGHT / 2);
+
+    ctx.textAlign = "left";
+  }
+
   /*
    * ゲーム状態の更新
    */
   function update() {
     const now = performance.now();
 
-    if (confirmingClearData) {
+    if (confirmingClearData || needsStartGesture) {
       lastFrameTime = now;
       return;
     }
@@ -1949,7 +1991,9 @@
       drawPause();
     }
 
-    if (countdownPhase !== null) {
+    if (needsStartGesture) {
+      drawClickToStart();
+    } else if (countdownPhase !== null) {
       drawCountdown();
     }
 
@@ -2005,7 +2049,12 @@
     createEnemy();
     moveCoin();
     clearMovementKeys();
-    beginCountdown();
+
+    if (needsStartGesture) {
+      countdownPhase = null;
+    } else {
+      beginCountdown();
+    }
   }
 
   /*
@@ -2485,7 +2534,11 @@
   soundOnButton.addEventListener("click", () => {
     soundEnabled = true;
     saveTimeSettings();
-    unlockAudio().then(() => playSound("coin"));
+    unlockAudio().then((ctxAudio) => {
+      if (ctxAudio && ctxAudio.state === "running") {
+        emitSound("coin");
+      }
+    });
   });
 
   soundOffButton.addEventListener("click", () => {
