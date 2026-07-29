@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.25">
+  <meta name="app-version" content="1.0.26">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -418,6 +418,8 @@
   let historyRecorded = false;
   let confirmingClearData = false;
   let paused = false;
+  let countdownPhase = null;
+  let countdownPhaseStartedAt = 0;
   let animationId = null;
   let lastFrameTime = performance.now();
   let invincibleRemainingMs = 0;
@@ -445,6 +447,9 @@
   const INVINCIBLE_ITEM_CHANCE = 0.1;
   const INVINCIBLE_ITEM_LIFETIME_MS = 5000;
   const STAR_COOLDOWN_COINS = 3;
+  const COUNTDOWN_LABELS = ["3", "2", "1", "START"];
+  const COUNTDOWN_PHASE_MS = 800;
+  const COUNTDOWN_START_MS = 700;
 
   const BGM_PATTERNS = {
     normal: {
@@ -613,10 +618,38 @@
       playTone(150, 0.1, "sawtooth", 0.04);
       return;
     }
+
+    if (name === "countdown") {
+      playTone(440, 0.1, "square", 0.08);
+      return;
+    }
+
+    if (name === "countdown2") {
+      playTone(554, 0.1, "square", 0.08);
+      return;
+    }
+
+    if (name === "countdown1") {
+      playTone(659, 0.12, "square", 0.09);
+      return;
+    }
+
+    if (name === "start") {
+      playTone(523, 0.08, "square", 0.08);
+      playTone(784, 0.08, "square", 0.08, 0.08);
+      playTone(1046, 0.2, "square", 0.09, 0.16);
+      return;
+    }
   }
 
   function getDesiredBgmMode() {
-    if (!bgmEnabled || gameOver || paused || confirmingClearData) {
+    if (
+      !bgmEnabled ||
+      gameOver ||
+      paused ||
+      confirmingClearData ||
+      countdownPhase !== null
+    ) {
       return null;
     }
 
@@ -875,24 +908,14 @@
     if (
       (event.key === "p" || event.key === "P") &&
       !gameOver &&
-      !confirmingClearData
+      !confirmingClearData &&
+      countdownPhase === null
     ) {
       paused = !paused;
       playSound("pause");
 
       if (paused) {
-        keys.ArrowUp = false;
-        keys.ArrowDown = false;
-        keys.ArrowLeft = false;
-        keys.ArrowRight = false;
-        keys.w = false;
-        keys.a = false;
-        keys.s = false;
-        keys.d = false;
-        keys.W = false;
-        keys.A = false;
-        keys.S = false;
-        keys.D = false;
+        clearMovementKeys();
       }
     }
 
@@ -909,6 +932,44 @@
 
   window.addEventListener("keyup", (event) => {
     keys[event.key] = false;
+  });
+
+  function clearMovementKeys() {
+    keys.ArrowUp = false;
+    keys.ArrowDown = false;
+    keys.ArrowLeft = false;
+    keys.ArrowRight = false;
+    keys.w = false;
+    keys.a = false;
+    keys.s = false;
+    keys.d = false;
+    keys.W = false;
+    keys.A = false;
+    keys.S = false;
+    keys.D = false;
+  }
+
+  function pauseForBackground() {
+    if (gameOver || confirmingClearData || paused) {
+      return;
+    }
+
+    if (countdownPhase !== null) {
+      return;
+    }
+
+    paused = true;
+    clearMovementKeys();
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      pauseForBackground();
+    }
+  });
+
+  window.addEventListener("blur", () => {
+    pauseForBackground();
   });
 
   restartButton.addEventListener("click", () => {
@@ -1747,13 +1808,92 @@
     ctx.textAlign = "left";
   }
 
+  function playCountdownSound(phase) {
+    if (phase === 0) {
+      playSound("countdown");
+    } else if (phase === 1) {
+      playSound("countdown2");
+    } else if (phase === 2) {
+      playSound("countdown1");
+    } else {
+      playSound("start");
+    }
+  }
+
+  function beginCountdown() {
+    countdownPhase = 0;
+    countdownPhaseStartedAt = performance.now();
+    playCountdownSound(0);
+  }
+
+  function updateCountdown(now) {
+    if (document.hidden) {
+      countdownPhaseStartedAt = now;
+      return;
+    }
+
+    const duration =
+      countdownPhase === COUNTDOWN_LABELS.length - 1
+        ? COUNTDOWN_START_MS
+        : COUNTDOWN_PHASE_MS;
+
+    if (now - countdownPhaseStartedAt < duration) {
+      return;
+    }
+
+    countdownPhase += 1;
+
+    if (countdownPhase >= COUNTDOWN_LABELS.length) {
+      countdownPhase = null;
+      runStartedAt = Date.now();
+      lastFrameTime = now;
+      return;
+    }
+
+    countdownPhaseStartedAt = now;
+    playCountdownSound(countdownPhase);
+  }
+
+  function drawCountdown() {
+    if (countdownPhase === null) {
+      return;
+    }
+
+    const label = COUNTDOWN_LABELS[countdownPhase];
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = label === "START" ? "#ffe566" : "#ffffff";
+    ctx.font =
+      label === "START"
+        ? '22px "DotGothic16", monospace'
+        : '36px "DotGothic16", monospace';
+    ctx.fillText(label, WIDTH / 2, HEIGHT / 2);
+
+    ctx.textAlign = "left";
+  }
+
   /*
    * ゲーム状態の更新
    */
   function update() {
     const now = performance.now();
 
-    if (gameOver || confirmingClearData || paused) {
+    if (confirmingClearData) {
+      lastFrameTime = now;
+      return;
+    }
+
+    if (countdownPhase !== null) {
+      updateCountdown(now);
+      lastFrameTime = now;
+      return;
+    }
+
+    if (gameOver || paused) {
       lastFrameTime = now;
       return;
     }
@@ -1805,8 +1945,12 @@
       drawGameOver();
     }
 
-    if (paused && !confirmingClearData) {
+    if (paused && !confirmingClearData && countdownPhase === null) {
       drawPause();
+    }
+
+    if (countdownPhase !== null) {
+      drawCountdown();
     }
 
     if (confirmingClearData) {
@@ -1860,6 +2004,8 @@
 
     createEnemy();
     moveCoin();
+    clearMovementKeys();
+    beginCountdown();
   }
 
   /*
