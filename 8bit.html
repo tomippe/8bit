@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.20">
+  <meta name="app-version" content="1.0.21">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -489,17 +489,31 @@
       audioContext = new AudioCtx();
     }
 
-    if (audioContext.state === "suspended") {
-      audioContext.resume();
-    }
-
-    if (!bgmGainNode) {
+    if (!bgmGainNode && audioContext) {
       bgmGainNode = audioContext.createGain();
-      bgmGainNode.gain.value = 0.045;
+      bgmGainNode.gain.value = 0.2;
       bgmGainNode.connect(audioContext.destination);
     }
 
     return audioContext;
+  }
+
+  function unlockAudio() {
+    const ctxAudio = ensureAudioContext();
+
+    if (!ctxAudio) {
+      return Promise.resolve(null);
+    }
+
+    if (ctxAudio.state === "suspended") {
+      return ctxAudio.resume().then(() => {
+        syncBgm();
+        return ctxAudio;
+      });
+    }
+
+    syncBgm();
+    return Promise.resolve(ctxAudio);
   }
 
   function ensureAudio() {
@@ -513,24 +527,26 @@
   function playTone(frequency, duration, type, volume, when, destination) {
     const ctxAudio = ensureAudioContext();
 
-    if (!ctxAudio || !frequency) {
+    if (!ctxAudio || !frequency || ctxAudio.state !== "running") {
       return;
     }
 
-    const start = ctxAudio.currentTime + (when || 0);
+    const start = ctxAudio.currentTime + Math.max(0, when || 0);
     const oscillator = ctxAudio.createOscillator();
     const gain = ctxAudio.createGain();
+    const peak = Math.max(volume || 0.08, 0.001);
+    const noteLength = Math.max(duration || 0.05, 0.04);
 
     oscillator.type = type || "square";
     oscillator.frequency.setValueAtTime(frequency, start);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume || 0.08, start + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    gain.gain.exponentialRampToValueAtTime(peak, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + noteLength);
 
     oscillator.connect(gain);
     gain.connect(destination || ctxAudio.destination);
     oscillator.start(start);
-    oscillator.stop(start + duration + 0.02);
+    oscillator.stop(start + noteLength + 0.03);
   }
 
   function playSound(name) {
@@ -538,7 +554,7 @@
       return;
     }
 
-    ensureAudioContext();
+    unlockAudio();
 
     if (name === "coin") {
       playTone(880, 0.06, "square", 0.07);
@@ -606,16 +622,20 @@
   }
 
   function scheduleBgmStep(pattern, stepIndex, absoluteTime) {
+    if (!audioContext || audioContext.state !== "running") {
+      return;
+    }
+
     const when = Math.max(0, absoluteTime - audioContext.currentTime);
     const melody = pattern.melody[stepIndex % pattern.melody.length];
     const bass = pattern.bass[stepIndex % pattern.bass.length];
 
     if (melody) {
-      playTone(melody, pattern.stepSec * 0.85, "square", 0.035, when, bgmGainNode);
+      playTone(melody, pattern.stepSec * 0.8, "square", 0.12, when, bgmGainNode);
     }
 
     if (bass) {
-      playTone(bass, pattern.stepSec * 0.9, "triangle", 0.03, when, bgmGainNode);
+      playTone(bass, pattern.stepSec * 0.85, "triangle", 0.1, when, bgmGainNode);
     }
   }
 
@@ -628,7 +648,7 @@
 
     bgmMode = mode;
     bgmStep = 0;
-    bgmNextNoteTime = ctxAudio.currentTime + 0.05;
+    bgmNextNoteTime = ctxAudio.currentTime + 0.08;
   }
 
   function stopBgm() {
@@ -642,9 +662,13 @@
       return;
     }
 
+    if (audioContext.state !== "running") {
+      return;
+    }
+
     const pattern = BGM_PATTERNS[bgmMode];
 
-    while (bgmNextNoteTime < audioContext.currentTime + 0.12) {
+    while (bgmNextNoteTime < audioContext.currentTime + 0.2) {
       scheduleBgmStep(pattern, bgmStep, bgmNextNoteTime);
       bgmNextNoteTime += pattern.stepSec;
       bgmStep += 1;
@@ -665,23 +689,13 @@
     tickBgm();
   }
 
-  window.addEventListener(
-    "pointerdown",
-    () => {
-      ensureAudioContext();
-      syncBgm();
-    },
-    { once: true }
-  );
+  function onUserGestureForAudio() {
+    unlockAudio();
+  }
 
-  window.addEventListener(
-    "keydown",
-    () => {
-      ensureAudioContext();
-      syncBgm();
-    },
-    { once: true }
-  );
+  window.addEventListener("pointerdown", onUserGestureForAudio);
+  window.addEventListener("keydown", onUserGestureForAudio);
+  window.addEventListener("touchstart", onUserGestureForAudio);
 
   /*
    * プレイヤー
@@ -2240,8 +2254,7 @@
   soundOnButton.addEventListener("click", () => {
     soundEnabled = true;
     saveTimeSettings();
-    ensureAudio();
-    playSound("coin");
+    unlockAudio().then(() => playSound("coin"));
   });
 
   soundOffButton.addEventListener("click", () => {
@@ -2252,8 +2265,7 @@
   bgmOnButton.addEventListener("click", () => {
     bgmEnabled = true;
     saveTimeSettings();
-    ensureAudioContext();
-    syncBgm();
+    unlockAudio();
   });
 
   bgmOffButton.addEventListener("click", () => {
