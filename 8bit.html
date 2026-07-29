@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.21">
+  <meta name="app-version" content="1.0.22">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -455,7 +455,10 @@
       ],
       bass: [
         131, 0, 131, 0, 165, 0, 165, 0, 175, 0, 175, 0, 196, 0, 196, 0
-      ]
+      ],
+      kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+      snare: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+      hat: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0]
     },
     invincible: {
       stepSec: 0.1,
@@ -466,7 +469,10 @@
       bass: [
         262, 330, 262, 392, 262, 330, 262, 440, 294, 370, 294, 440, 330, 415,
         330, 494
-      ]
+      ],
+      kick: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+      snare: [0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+      hat: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     }
   };
 
@@ -621,6 +627,70 @@
     return "normal";
   }
 
+  function playNoise(duration, volume, when, destination) {
+    const ctxAudio = ensureAudioContext();
+
+    if (!ctxAudio || ctxAudio.state !== "running") {
+      return;
+    }
+
+    const start = ctxAudio.currentTime + Math.max(0, when || 0);
+    const length = Math.max(duration || 0.05, 0.02);
+    const sampleCount = Math.floor(ctxAudio.sampleRate * length);
+    const buffer = ctxAudio.createBuffer(1, sampleCount, ctxAudio.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < sampleCount; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const source = ctxAudio.createBufferSource();
+    const gain = ctxAudio.createGain();
+    const peak = Math.max(volume || 0.05, 0.001);
+
+    source.buffer = buffer;
+    gain.gain.setValueAtTime(peak, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+
+    source.connect(gain);
+    gain.connect(destination || ctxAudio.destination);
+    source.start(start);
+    source.stop(start + length + 0.02);
+  }
+
+  function playKick(when, destination) {
+    const ctxAudio = ensureAudioContext();
+
+    if (!ctxAudio || ctxAudio.state !== "running") {
+      return;
+    }
+
+    const start = ctxAudio.currentTime + Math.max(0, when || 0);
+    const oscillator = ctxAudio.createOscillator();
+    const gain = ctxAudio.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(150, start);
+    oscillator.frequency.exponentialRampToValueAtTime(45, start + 0.12);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.22, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+
+    oscillator.connect(gain);
+    gain.connect(destination || ctxAudio.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 0.18);
+  }
+
+  function playSnare(when, destination) {
+    playTone(200, 0.05, "triangle", 0.08, when, destination);
+    playNoise(0.08, 0.1, when, destination);
+  }
+
+  function playHat(when, destination) {
+    playNoise(0.03, 0.045, when, destination);
+  }
+
   function scheduleBgmStep(pattern, stepIndex, absoluteTime) {
     if (!audioContext || audioContext.state !== "running") {
       return;
@@ -629,6 +699,9 @@
     const when = Math.max(0, absoluteTime - audioContext.currentTime);
     const melody = pattern.melody[stepIndex % pattern.melody.length];
     const bass = pattern.bass[stepIndex % pattern.bass.length];
+    const kick = pattern.kick[stepIndex % pattern.kick.length];
+    const snare = pattern.snare[stepIndex % pattern.snare.length];
+    const hat = pattern.hat[stepIndex % pattern.hat.length];
 
     if (melody) {
       playTone(melody, pattern.stepSec * 0.8, "square", 0.12, when, bgmGainNode);
@@ -636,6 +709,18 @@
 
     if (bass) {
       playTone(bass, pattern.stepSec * 0.85, "triangle", 0.1, when, bgmGainNode);
+    }
+
+    if (kick) {
+      playKick(when, bgmGainNode);
+    }
+
+    if (snare) {
+      playSnare(when, bgmGainNode);
+    }
+
+    if (hat) {
+      playHat(when, bgmGainNode);
     }
   }
 
