@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.18">
+  <meta name="app-version" content="1.0.19">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1140,6 +1140,7 @@
     const date = new Date(timestamp);
     let hours = date.getHours();
     const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
 
     if (timeFormat === "12") {
       const suffix = hours >= 12 ? "PM" : "AM";
@@ -1149,11 +1150,11 @@
         hours = 12;
       }
 
-      const clock = `${hours}:${minutes}`;
-      return showAmPm ? `${clock} ${suffix}` : clock;
+      const clock = `${hours}:${minutes}:${seconds}`;
+      return showAmPm ? `${suffix} ${clock}` : clock;
     }
 
-    return `${String(hours).padStart(2, "0")}:${minutes}`;
+    return `${String(hours).padStart(2, "0")}:${minutes}:${seconds}`;
   }
 
   function updateSettingsView() {
