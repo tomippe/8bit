@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.29">
+  <meta name="app-version" content="1.0.31">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -529,6 +529,11 @@
       <button type="button" id="bgmOnButton">ON</button>
       <button type="button" id="bgmOffButton">OFF</button>
     </div>
+    <div class="settings-row">
+      <label>履歴登録</label>
+      <button type="button" id="historyOnButton">する</button>
+      <button type="button" id="historyOffButton">しない</button>
+    </div>
   </div>
 </div>
 
@@ -569,6 +574,8 @@
   const soundOffButton = document.getElementById("soundOffButton");
   const bgmOnButton = document.getElementById("bgmOnButton");
   const bgmOffButton = document.getElementById("bgmOffButton");
+  const historyOnButton = document.getElementById("historyOnButton");
+  const historyOffButton = document.getElementById("historyOffButton");
 
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -581,6 +588,7 @@
   const SHOW_AMPM_KEY = "coinHunterShowAmPm";
   const SOUND_ENABLED_KEY = "coinHunterSoundEnabled";
   const BGM_ENABLED_KEY = "coinHunterBgmEnabled";
+  const HISTORY_ENABLED_KEY = "coinHunterHistoryEnabled";
   const DIFFICULTY_KEY = "coinHunterDifficulty";
   const API_BASE = "api";
 
@@ -635,6 +643,7 @@
   let showAmPm = localStorage.getItem(SHOW_AMPM_KEY) !== "0";
   let soundEnabled = localStorage.getItem(SOUND_ENABLED_KEY) !== "0";
   let bgmEnabled = localStorage.getItem(BGM_ENABLED_KEY) !== "0";
+  let historyEnabled = localStorage.getItem(HISTORY_ENABLED_KEY) !== "0";
   let audioContext = null;
   let bgmGainNode = null;
   let bgmMode = null;
@@ -1977,6 +1986,8 @@
     soundOffButton.classList.toggle("active", !soundEnabled);
     bgmOnButton.classList.toggle("active", bgmEnabled);
     bgmOffButton.classList.toggle("active", !bgmEnabled);
+    historyOnButton.classList.toggle("active", historyEnabled);
+    historyOffButton.classList.toggle("active", !historyEnabled);
   }
 
   function saveTimeSettings() {
@@ -1985,6 +1996,7 @@
     localStorage.setItem(SHOW_AMPM_KEY, showAmPm ? "1" : "0");
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
     localStorage.setItem(BGM_ENABLED_KEY, bgmEnabled ? "1" : "0");
+    localStorage.setItem(HISTORY_ENABLED_KEY, historyEnabled ? "1" : "0");
     updateSettingsView();
     updateLoginTimeLabel();
     renderHistoryList();
@@ -2617,7 +2629,7 @@
   }
 
   async function recordPlayHistory() {
-    if (!loggedInUsername || historyRecorded) {
+    if (!loggedInUsername || !historyEnabled || historyRecorded) {
       return;
     }
 
@@ -2990,6 +3002,16 @@
   bgmOffButton.addEventListener("click", () => {
     bgmEnabled = false;
     stopBgm();
+    saveTimeSettings();
+  });
+
+  historyOnButton.addEventListener("click", () => {
+    historyEnabled = true;
+    saveTimeSettings();
+  });
+
+  historyOffButton.addEventListener("click", () => {
+    historyEnabled = false;
     saveTimeSettings();
   });
 
