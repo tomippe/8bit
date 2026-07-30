@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.33">
+  <meta name="app-version" content="1.0.34">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1553,27 +1553,50 @@
   }
 
   /*
+   * アイテム用の空きマスを探す
+   */
+  function findItemSpawnPosition(itemWidth, itemHeight, extraBlocked) {
+    const maxAttempts = 48;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const x = randomGridPosition(WIDTH - itemWidth);
+      const y =
+        SCORE_BAR_HEIGHT +
+        randomGridPosition(HEIGHT - SCORE_BAR_HEIGHT - itemHeight);
+      const spot = { x, y, width: itemWidth, height: itemHeight };
+
+      const blocked =
+        checkCollision(spot, coin) ||
+        checkCollision(spot, player) ||
+        (twoPlayerMode && checkCollision(spot, player2)) ||
+        enemies.some((enemy) => checkCollision(spot, enemy)) ||
+        (typeof extraBlocked === "function" && extraBlocked(spot));
+
+      if (!blocked) {
+        return { x, y };
+      }
+    }
+
+    return {
+      x: randomGridPosition(WIDTH - itemWidth),
+      y:
+        SCORE_BAR_HEIGHT +
+        randomGridPosition(HEIGHT - SCORE_BAR_HEIGHT - itemHeight)
+    };
+  }
+
+  /*
    * 無敵アイテムを出現させる
    */
   function spawnInvincibleItem() {
-    let validPosition = false;
+    const position = findItemSpawnPosition(
+      invincibleItem.width,
+      invincibleItem.height,
+      (spot) => healItem.active && checkCollision(spot, healItem)
+    );
 
-    while (!validPosition) {
-      invincibleItem.x = randomGridPosition(WIDTH - invincibleItem.width);
-      invincibleItem.y =
-        SCORE_BAR_HEIGHT +
-        randomGridPosition(
-          HEIGHT - SCORE_BAR_HEIGHT - invincibleItem.height
-        );
-
-      validPosition =
-        !checkCollision(invincibleItem, coin) &&
-        !checkCollision(invincibleItem, player) &&
-        !(twoPlayerMode && checkCollision(invincibleItem, player2)) &&
-        !(healItem.active && checkCollision(invincibleItem, healItem)) &&
-        !enemies.some((enemy) => checkCollision(invincibleItem, enemy));
-    }
-
+    invincibleItem.x = position.x;
+    invincibleItem.y = position.y;
     invincibleItem.active = true;
     invincibleItem.remainingMs = INVINCIBLE_ITEM_LIFETIME_MS;
     playSound("starSpawn");
@@ -1587,25 +1610,15 @@
       return;
     }
 
-    let validPosition = false;
+    const position = findItemSpawnPosition(
+      healItem.width,
+      healItem.height,
+      (spot) =>
+        invincibleItem.active && checkCollision(spot, invincibleItem)
+    );
 
-    while (!validPosition) {
-      healItem.x = randomGridPosition(WIDTH - healItem.width);
-      healItem.y =
-        SCORE_BAR_HEIGHT +
-        randomGridPosition(HEIGHT - SCORE_BAR_HEIGHT - healItem.height);
-
-      validPosition =
-        !checkCollision(healItem, coin) &&
-        !checkCollision(healItem, player) &&
-        !(twoPlayerMode && checkCollision(healItem, player2)) &&
-        !(
-          invincibleItem.active &&
-          checkCollision(healItem, invincibleItem)
-        ) &&
-        !enemies.some((enemy) => checkCollision(healItem, enemy));
-    }
-
+    healItem.x = position.x;
+    healItem.y = position.y;
     healItem.active = true;
     healItem.remainingMs = HEAL_ITEM_LIFETIME_MS;
     playSound("healSpawn");
@@ -1793,7 +1806,9 @@
       Math.random() < INVINCIBLE_ITEM_CHANCE
     ) {
       spawnInvincibleItem();
-    } else if (
+    }
+
+    if (
       !healItem.active &&
       healCooldownCoins <= 0 &&
       hitPoints < maxHitPoints() &&
