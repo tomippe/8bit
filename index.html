@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.39">
+  <meta name="app-version" content="1.0.40">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -2461,65 +2461,75 @@
     const textY = SCORE_BAR_HEIGHT / 2;
     const isHighScoreUpdating = leadingScore() > highScoreAtStart;
     const total = score + score2;
+    const hiText = twoPlayerMode ? `HI2 ${highScore}` : `HI ${highScore}`;
+    const newText = isHighScoreUpdating ? "NEW!" : "";
+    const rightReserve =
+      ctx.measureText(hiText).width +
+      (newText ? ctx.measureText(newText).width + 4 : 0) +
+      8;
 
-    ctx.fillStyle = "white";
+    let x = 2;
 
-    if (twoPlayerMode) {
-      ctx.fillText(`SC ${score}`, 2, textY);
-      ctx.fillStyle = "#81c784";
-      ctx.fillText(`2PSC ${score2}`, 42, textY);
-      ctx.fillStyle = "#ffcc00";
-      ctx.fillText(`TOT ${total}`, 96, textY);
-      ctx.fillStyle = "#ff706b";
-      ctx.fillText(`L1 ${hitPoints}`, 140, textY);
-      ctx.fillStyle = "#81c784";
+    function drawLeft(text, color) {
+      const width = ctx.measureText(text).width;
 
-      if (reviveRemainingMs2 > 0) {
-        ctx.fillText(`R${Math.ceil(reviveRemainingMs2 / 1000)}`, 172, textY);
-      } else {
-        ctx.fillText(`L2 ${hitPoints2}`, 172, textY);
+      if (x + width > WIDTH - rightReserve) {
+        return false;
       }
 
-      ctx.fillStyle = "white";
-      ctx.fillText(`E ${enemies.length}`, 204, textY);
-      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 228, textY);
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, textY);
+      x += width + 5;
+      return true;
+    }
+
+    if (twoPlayerMode) {
+      drawLeft(`SC ${score}`, "white");
+      drawLeft(`2PSC ${score2}`, "#81c784");
+      drawLeft(`TOT ${total}`, "#ffcc00");
+      drawLeft(`L1 ${hitPoints}`, "#ff706b");
+
+      if (invincibleRemainingMs > 0) {
+        drawLeft(`${Math.ceil(invincibleRemainingMs / 1000)}`, "#7ef9ff");
+      }
+
+      if (reviveRemainingMs2 > 0) {
+        drawLeft(`R${Math.ceil(reviveRemainingMs2 / 1000)}`, "#81c784");
+      } else {
+        drawLeft(`L2 ${hitPoints2}`, "#81c784");
+      }
+
+      if (invincibleRemainingMs2 > 0) {
+        drawLeft(`${Math.ceil(invincibleRemainingMs2 / 1000)}`, "#b5f5c8");
+      }
+
+      drawLeft(`E ${enemies.length}`, "white");
+      drawLeft(formatRunTime(runTimeMs), "white");
     } else {
-      ctx.fillText(`SCORE ${score}`, 4, textY);
-      ctx.fillStyle = "#ff706b";
-      ctx.fillText(`LIFE ${hitPoints}`, 68, textY);
-      ctx.fillStyle = "white";
-      ctx.fillText(`ENEMY ${enemies.length}`, 118, textY);
-      ctx.fillText(`TIME ${formatRunTime(runTimeMs)}`, 180, textY);
+      drawLeft(`SCORE ${score}`, "white");
+      drawLeft(`LIFE ${hitPoints}`, "#ff706b");
+      drawLeft(`ENEMY ${enemies.length}`, "white");
+      drawLeft(`TIME ${formatRunTime(runTimeMs)}`, "white");
+
+      if (invincibleRemainingMs > 0) {
+        drawLeft(
+          `INV ${Math.ceil(invincibleRemainingMs / 1000)}`,
+          "#7ef9ff"
+        );
+      }
     }
 
-    if (invincibleRemainingMs > 0) {
-      const seconds = Math.ceil(invincibleRemainingMs / 1000);
-      ctx.fillStyle = "#7ef9ff";
-      ctx.fillText(`P1 ${seconds}`, twoPlayerMode ? 225 : 230, textY);
-    }
-
-    if (twoPlayerMode && invincibleRemainingMs2 > 0) {
-      const seconds = Math.ceil(invincibleRemainingMs2 / 1000);
-      ctx.fillStyle = "#81c784";
-      ctx.fillText(`P2 ${seconds}`, 258, textY);
-    }
-
-    const hiText = twoPlayerMode
-      ? `HI2 ${highScore}`
-      : `HI ${highScore}`;
-    const hiWidth = ctx.measureText(hiText).width;
     let cursorX = WIDTH - 4;
 
-    if (isHighScoreUpdating) {
-      const message = "NEW!";
-      const messageWidth = ctx.measureText(message).width;
+    if (newText) {
+      const messageWidth = ctx.measureText(newText).width;
       cursorX -= messageWidth;
       ctx.fillStyle = "#ffcc00";
-      ctx.fillText(message, cursorX, textY);
+      ctx.fillText(newText, cursorX, textY);
       cursorX -= 4;
     }
 
-    cursorX -= hiWidth;
+    cursorX -= ctx.measureText(hiText).width;
     ctx.fillStyle = "white";
     ctx.fillText(hiText, cursorX, textY);
   }
