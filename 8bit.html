@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.35">
+  <meta name="app-version" content="1.0.36">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -510,9 +510,10 @@
       <button type="button" id="difficultyHardButton">HARD</button>
     </div>
     <div class="settings-row">
-      <label>2Pライフ</label>
-      <button type="button" id="lifeSharedButton">同じ</button>
-      <button type="button" id="lifeSeparateButton">別</button>
+      <label>2Pモード</label>
+      <button type="button" id="modeCoopButton">協力</button>
+      <button type="button" id="modeVersusButton">対戦</button>
+      <button type="button" id="modeHardCoopButton">HARD協力</button>
     </div>
     <div class="settings-row">
       <label>時刻表記</label>
@@ -570,8 +571,9 @@
     "difficultyNormalButton"
   );
   const difficultyHardButton = document.getElementById("difficultyHardButton");
-  const lifeSharedButton = document.getElementById("lifeSharedButton");
-  const lifeSeparateButton = document.getElementById("lifeSeparateButton");
+  const modeCoopButton = document.getElementById("modeCoopButton");
+  const modeVersusButton = document.getElementById("modeVersusButton");
+  const modeHardCoopButton = document.getElementById("modeHardCoopButton");
   const timeFormat24Button = document.getElementById("timeFormat24Button");
   const timeFormat12Button = document.getElementById("timeFormat12Button");
   const ampmOnButton = document.getElementById("ampmOnButton");
@@ -597,7 +599,7 @@
   const BGM_ENABLED_KEY = "coinHunterBgmEnabled";
   const HISTORY_ENABLED_KEY = "coinHunterHistoryEnabled";
   const DIFFICULTY_KEY = "coinHunterDifficulty";
-  const LIFE_SHARED_KEY = "coinHunterLifeShared2P";
+  const TWO_PLAYER_RULE_KEY = "coinHunterTwoPlayerRule";
   const API_BASE = "api";
 
   const DIFFICULTY_HITS = {
@@ -606,6 +608,7 @@
     hard: 1
   };
   const HIT_IFRAME_MS = 1200;
+  const COOP_REVIVE_MS = 10000;
 
   function normalizeDifficulty(value) {
     if (value === "easy" || value === "hard" || value === "normal") {
@@ -613,6 +616,14 @@
     }
 
     return "normal";
+  }
+
+  function normalizeTwoPlayerRule(value) {
+    if (value === "versus" || value === "hardcoop" || value === "coop") {
+      return value;
+    }
+
+    return "coop";
   }
 
   const keys = {};
@@ -644,9 +655,13 @@
   let runEndedAt = 0;
   let twoPlayerMode = false;
   let difficulty = normalizeDifficulty(localStorage.getItem(DIFFICULTY_KEY));
-  let sharedLife2P = localStorage.getItem(LIFE_SHARED_KEY) !== "0";
+  let twoPlayerRule = normalizeTwoPlayerRule(
+    localStorage.getItem(TWO_PLAYER_RULE_KEY)
+  );
   let hitPoints = DIFFICULTY_HITS[difficulty];
   let hitPoints2 = DIFFICULTY_HITS[difficulty];
+  let reviveRemainingMs2 = 0;
+  let versusWinner = null;
   let loggedInUsername = null;
   let loginAt = 0;
   let authPanelOpen = false;
@@ -1667,7 +1682,7 @@
   }
 
   function isSeparateLifeMode() {
-    return twoPlayerMode && !sharedLife2P;
+    return twoPlayerMode;
   }
 
   function getPlayerHitPoints(target) {
@@ -1701,13 +1716,16 @@
       damageIframeMs = value;
     } else {
       damageIframeMs = value;
-      damageIframeMs2 = value;
+      damageIframeMs2 = 0;
     }
   }
 
   function canSpawnHealItem() {
     if (isSeparateLifeMode()) {
-      return hitPoints < maxHitPoints() || hitPoints2 < maxHitPoints();
+      return (
+        (hitPoints > 0 && hitPoints < maxHitPoints()) ||
+        (hitPoints2 > 0 && hitPoints2 < maxHitPoints())
+      );
     }
 
     return hitPoints < maxHitPoints();
@@ -1720,10 +1738,6 @@
   function getActivePlayers() {
     if (!twoPlayerMode) {
       return isPlayerAlive(player) ? [player] : [];
-    }
-
-    if (!isSeparateLifeMode()) {
-      return hitPoints > 0 ? [player, player2] : [];
     }
 
     const players = [];
@@ -2217,8 +2231,12 @@
     difficultyEasyButton.classList.toggle("active", difficulty === "easy");
     difficultyNormalButton.classList.toggle("active", difficulty === "normal");
     difficultyHardButton.classList.toggle("active", difficulty === "hard");
-    lifeSharedButton.classList.toggle("active", sharedLife2P);
-    lifeSeparateButton.classList.toggle("active", !sharedLife2P);
+    modeCoopButton.classList.toggle("active", twoPlayerRule === "coop");
+    modeVersusButton.classList.toggle("active", twoPlayerRule === "versus");
+    modeHardCoopButton.classList.toggle(
+      "active",
+      twoPlayerRule === "hardcoop"
+    );
     timeFormat24Button.classList.toggle("active", timeFormat === "24");
     timeFormat12Button.classList.toggle("active", timeFormat === "12");
     ampmOnButton.classList.toggle("active", showAmPm);
@@ -2234,7 +2252,7 @@
 
   function saveTimeSettings() {
     localStorage.setItem(DIFFICULTY_KEY, difficulty);
-    localStorage.setItem(LIFE_SHARED_KEY, sharedLife2P ? "1" : "0");
+    localStorage.setItem(TWO_PLAYER_RULE_KEY, twoPlayerRule);
     localStorage.setItem(TIME_FORMAT_KEY, timeFormat);
     localStorage.setItem(SHOW_AMPM_KEY, showAmPm ? "1" : "0");
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
@@ -2265,13 +2283,15 @@
     restartGame();
   }
 
-  function setSharedLife2P(shared) {
-    if (sharedLife2P === shared) {
+  function setTwoPlayerRule(nextRule) {
+    const normalized = normalizeTwoPlayerRule(nextRule);
+
+    if (twoPlayerRule === normalized) {
       updateSettingsView();
       return;
     }
 
-    sharedLife2P = shared;
+    twoPlayerRule = normalized;
     saveTimeSettings();
 
     if (needsStartGesture) {
@@ -2291,6 +2311,8 @@
     hitPoints2 = maxHitPoints();
     damageIframeMs = 0;
     damageIframeMs2 = 0;
+    reviveRemainingMs2 = 0;
+    versusWinner = null;
   }
 
   function difficultyLabel(value) {
@@ -2307,8 +2329,29 @@
     return "NORMAL";
   }
 
+  function twoPlayerRuleLabel(value) {
+    const key = normalizeTwoPlayerRule(value || twoPlayerRule);
+
+    if (key === "versus") {
+      return "対戦";
+    }
+
+    if (key === "hardcoop") {
+      return "HARD協力";
+    }
+
+    return "協力";
+  }
+
+  function startCoopReviveP2() {
+    hitPoints2 = 0;
+    invincibleRemainingMs2 = 0;
+    damageIframeMs2 = 0;
+    reviveRemainingMs2 = COOP_REVIVE_MS;
+  }
+
   function applyEnemyDamage(target) {
-    if (gameOver || getDamageIframeMs(target) > 0) {
+    if (gameOver || getDamageIframeMs(target) > 0 || !isPlayerAlive(target)) {
       return;
     }
 
@@ -2317,18 +2360,32 @@
     playSound("enemyHit");
     setDamageIframeMs(target, HIT_IFRAME_MS);
 
-    if (!isSeparateLifeMode()) {
-      if (hitPoints <= 0) {
-        hitPoints = 0;
-        triggerGameOver();
-      }
-
+    if (getPlayerHitPoints(target) > 0) {
       return;
     }
 
-    if (hitPoints <= 0 && hitPoints2 <= 0) {
+    if (!twoPlayerMode) {
       triggerGameOver();
+      return;
     }
+
+    if (twoPlayerRule === "coop") {
+      if (target === player) {
+        triggerGameOver();
+        return;
+      }
+
+      startCoopReviveP2();
+      return;
+    }
+
+    if (twoPlayerRule === "versus") {
+      versusWinner = target === player ? "p2" : "p1";
+      triggerGameOver();
+      return;
+    }
+
+    triggerGameOver();
   }
 
   function updateLoginTimeLabel() {
@@ -2377,20 +2434,18 @@
       ctx.fillStyle = "#ffcc00";
       ctx.fillText(`TOT ${total}`, 96, textY);
       ctx.fillStyle = "#ff706b";
+      ctx.fillText(`L1 ${hitPoints}`, 140, textY);
+      ctx.fillStyle = "#81c784";
 
-      if (isSeparateLifeMode()) {
-        ctx.fillText(`L1 ${hitPoints}`, 140, textY);
-        ctx.fillStyle = "#81c784";
-        ctx.fillText(`L2 ${hitPoints2}`, 172, textY);
-        ctx.fillStyle = "white";
-        ctx.fillText(`E ${enemies.length}`, 204, textY);
-        ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 228, textY);
+      if (reviveRemainingMs2 > 0) {
+        ctx.fillText(`R${Math.ceil(reviveRemainingMs2 / 1000)}`, 172, textY);
       } else {
-        ctx.fillText(`L${hitPoints}`, 140, textY);
-        ctx.fillStyle = "white";
-        ctx.fillText(`E ${enemies.length}`, 162, textY);
-        ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 190, textY);
+        ctx.fillText(`L2 ${hitPoints2}`, 172, textY);
       }
+
+      ctx.fillStyle = "white";
+      ctx.fillText(`E ${enemies.length}`, 204, textY);
+      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 228, textY);
     } else {
       ctx.fillText(`SCORE ${score}`, 4, textY);
       ctx.fillStyle = "#ff706b";
@@ -2444,11 +2499,35 @@
 
     ctx.fillStyle = "#ff3b30";
     ctx.font = '16px "DotGothic16", monospace';
-    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 28);
+    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 40);
 
     ctx.fillStyle = "#ffcc00";
     ctx.font = '10px "DotGothic16", monospace';
-    ctx.fillText(difficultyLabel(difficulty), WIDTH / 2, HEIGHT / 2 - 14);
+
+    const modeLine = twoPlayerMode
+      ? `${difficultyLabel(difficulty)} / ${twoPlayerRuleLabel(twoPlayerRule)}`
+      : difficultyLabel(difficulty);
+    ctx.fillText(modeLine, WIDTH / 2, HEIGHT / 2 - 26);
+
+    let bodyY = HEIGHT / 2 - 8;
+
+    if (twoPlayerMode && twoPlayerRule === "versus" && versusWinner) {
+      const p1Win = versusWinner === "p1";
+      ctx.fillStyle = p1Win ? "#ffe566" : "#ff706b";
+      ctx.fillText(
+        p1Win ? "P1 YOU WIN!" : "P1 YOU LOSE...",
+        WIDTH / 2,
+        bodyY
+      );
+      bodyY += 14;
+      ctx.fillStyle = p1Win ? "#ff706b" : "#ffe566";
+      ctx.fillText(
+        p1Win ? "P2 YOU LOSE..." : "P2 YOU WIN!",
+        WIDTH / 2,
+        bodyY
+      );
+      bodyY += 16;
+    }
 
     ctx.fillStyle = "white";
     ctx.font = '10px "DotGothic16", monospace';
@@ -2457,36 +2536,29 @@
       ctx.fillText(
         `SC: ${score}  2PSC: ${score2}  TOT: ${score + score2}`,
         WIDTH / 2,
-        HEIGHT / 2 + 2
+        bodyY
       );
-      ctx.fillText(
-        `HI2: ${highScore}`,
-        WIDTH / 2,
-        HEIGHT / 2 + 16
-      );
+      bodyY += 14;
+      ctx.fillText(`HI2: ${highScore}`, WIDTH / 2, bodyY);
+      bodyY += 14;
     } else {
       ctx.fillText(
         `SCORE: ${score}  HI: ${highScore}`,
         WIDTH / 2,
-        HEIGHT / 2 + 2
+        bodyY
       );
+      bodyY += 14;
     }
 
-    ctx.fillText(
-      `TIME: ${formatRunTime(runTimeMs)}`,
-      WIDTH / 2,
-      HEIGHT / 2 + 30
-    );
+    ctx.fillText(`TIME: ${formatRunTime(runTimeMs)}`, WIDTH / 2, bodyY);
+    bodyY += 14;
     ctx.fillText(
       `${formatClockHm(runStartedAt)}〜${formatClockHm(runEndedAt || Date.now())}`,
       WIDTH / 2,
-      HEIGHT / 2 + 44
+      bodyY
     );
-    ctx.fillText(
-      "PRESS SPACE TO RESTART",
-      WIDTH / 2,
-      HEIGHT / 2 + 60
-    );
+    bodyY += 16;
+    ctx.fillText("PRESS SPACE TO RESTART", WIDTH / 2, bodyY);
 
     ctx.textAlign = "left";
   }
@@ -2681,6 +2753,20 @@
 
     if (damageIframeMs2 > 0) {
       damageIframeMs2 = Math.max(0, damageIframeMs2 - deltaMs);
+    }
+
+    if (
+      twoPlayerMode &&
+      twoPlayerRule === "coop" &&
+      reviveRemainingMs2 > 0
+    ) {
+      reviveRemainingMs2 = Math.max(0, reviveRemainingMs2 - deltaMs);
+
+      if (reviveRemainingMs2 <= 0) {
+        hitPoints2 = maxHitPoints();
+        damageIframeMs2 = HIT_IFRAME_MS;
+        playSound("healGet");
+      }
     }
 
     if (invincibleItem.active) {
@@ -2889,6 +2975,8 @@
       .map((entry) => {
         const modeLabel = entry.mode === "2p" ? "2P" : "1P";
         const diffLabel = difficultyLabel(entry.difficulty);
+        const ruleLabel =
+          entry.mode === "2p" ? `/${twoPlayerRuleLabel(entry.twoPlayerRule)}` : "";
         const duration = formatRunTime(entry.durationMs || 0);
         const clock = `${formatClockHm(entry.startedAt)}〜${formatClockHm(entry.endedAt)}`;
         let scores = "";
@@ -2904,7 +2992,7 @@
         return `
           <div class="history-item" data-id="${entry.id}">
             <div class="history-item-body">
-              <div>[${modeLabel}/${diffLabel}] ${scores}</div>
+              <div>[${modeLabel}/${diffLabel}${ruleLabel}] ${scores}</div>
               <div class="history-item-meta">時間 ${duration}　${clock}</div>
             </div>
             <button type="button" class="history-delete" data-id="${entry.id}" aria-label="削除">×</button>
@@ -2946,6 +3034,7 @@
     const payload = {
       mode: twoPlayerMode ? "2p" : "1p",
       difficulty,
+      twoPlayerRule: twoPlayerMode ? twoPlayerRule : null,
       score,
       score2: twoPlayerMode ? score2 : 0,
       totalScore: twoPlayerMode ? score + score2 : score,
@@ -3276,12 +3365,16 @@
     setDifficulty("hard");
   });
 
-  lifeSharedButton.addEventListener("click", () => {
-    setSharedLife2P(true);
+  modeCoopButton.addEventListener("click", () => {
+    setTwoPlayerRule("coop");
   });
 
-  lifeSeparateButton.addEventListener("click", () => {
-    setSharedLife2P(false);
+  modeVersusButton.addEventListener("click", () => {
+    setTwoPlayerRule("versus");
+  });
+
+  modeHardCoopButton.addEventListener("click", () => {
+    setTwoPlayerRule("hardcoop");
   });
 
   ampmOnButton.addEventListener("click", () => {

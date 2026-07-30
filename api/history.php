@@ -38,6 +38,10 @@ if ($method === 'POST') {
     $difficulty = in_array($difficultyRaw, ['easy', 'normal', 'hard'], true)
         ? $difficultyRaw
         : 'normal';
+    $twoPlayerRuleRaw = (string) ($body['twoPlayerRule'] ?? '');
+    $twoPlayerRule = in_array($twoPlayerRuleRaw, ['coop', 'versus', 'hardcoop'], true)
+        ? $twoPlayerRuleRaw
+        : null;
     $score = (int) ($body['score'] ?? 0);
     $score2 = (int) ($body['score2'] ?? 0);
     $totalScore = (int) ($body['totalScore'] ?? ($score + $score2));
@@ -58,6 +62,7 @@ if ($method === 'POST') {
         'id' => bin2hex(random_bytes(8)),
         'mode' => $mode,
         'difficulty' => $difficulty,
+        'twoPlayerRule' => $mode === '2p' ? ($twoPlayerRule ?? 'coop') : null,
         'score' => $score,
         'score2' => $mode === '2p' ? $score2 : 0,
         'totalScore' => $mode === '2p' ? $totalScore : $score,
