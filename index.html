@@ -1537,7 +1537,7 @@
     const previousX = target.x;
     const previousY = target.y;
     const moveSpeed =
-      getPlayerInvincibleMs(target) > 0 ? target.speed * 1.5 : target.speed;
+      getPlayerInvincibleMs(target) > 0 ? target.speed * 1.2 : target.speed;
 
     if (controls.left.some((key) => keys[key])) {
       target.x -= moveSpeed;
