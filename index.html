@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.32">
+  <meta name="app-version" content="1.0.33">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -461,7 +461,7 @@
   <div class="info">
     1P：矢印キー　2P：WASD　P：ポーズ　スペース：再スタート<br>
     黄色いコインを集めろ！赤い敵には触れるな！<br>
-    コイン10個に1回くらい出る水色の星を取ると10秒間無敵！
+    水色の星＝10秒無敵　緑のハート＝ライフ回復（減っているとき出現）
   </div>
 
   <button id="restartButton">RESTART</button>
@@ -629,6 +629,7 @@
   let invincibleRemainingMs2 = 0;
   let damageIframeMs = 0;
   let starCooldownCoins = 0;
+  let healCooldownCoins = 0;
   let runTimeMs = 0;
   let runStartedAt = Date.now();
   let runEndedAt = 0;
@@ -654,6 +655,9 @@
   const INVINCIBLE_ITEM_CHANCE = 0.1;
   const INVINCIBLE_ITEM_LIFETIME_MS = 5000;
   const STAR_COOLDOWN_COINS = 3;
+  const HEAL_ITEM_CHANCE = 0.15;
+  const HEAL_ITEM_LIFETIME_MS = 5000;
+  const HEAL_COOLDOWN_COINS = 2;
   const COUNTDOWN_LABELS = ["3", "2", "1", "START"];
   const COUNTDOWN_PHASE_MS = 800;
   const COUNTDOWN_START_MS = 700;
@@ -789,6 +793,19 @@
       playTone(659, 0.08, "square", 0.07, 0.07);
       playTone(784, 0.08, "square", 0.07, 0.14);
       playTone(1046, 0.14, "square", 0.06, 0.22);
+      return;
+    }
+
+    if (name === "healSpawn") {
+      playTone(392, 0.05, "triangle", 0.05);
+      playTone(523, 0.06, "triangle", 0.05, 0.05);
+      return;
+    }
+
+    if (name === "healGet") {
+      playTone(523, 0.07, "square", 0.07);
+      playTone(659, 0.08, "square", 0.07, 0.07);
+      playTone(784, 0.12, "square", 0.06, 0.15);
       return;
     }
 
@@ -1098,6 +1115,15 @@
    * 無敵アイテム
    */
   const invincibleItem = {
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    active: false,
+    remainingMs: 0
+  };
+
+  const healItem = {
     x: 0,
     y: 0,
     width: 10,
@@ -1521,7 +1547,8 @@
         !(
           invincibleItem.active &&
           checkCollision(coin, invincibleItem)
-        );
+        ) &&
+        !(healItem.active && checkCollision(coin, healItem));
     }
   }
 
@@ -1543,12 +1570,45 @@
         !checkCollision(invincibleItem, coin) &&
         !checkCollision(invincibleItem, player) &&
         !(twoPlayerMode && checkCollision(invincibleItem, player2)) &&
+        !(healItem.active && checkCollision(invincibleItem, healItem)) &&
         !enemies.some((enemy) => checkCollision(invincibleItem, enemy));
     }
 
     invincibleItem.active = true;
     invincibleItem.remainingMs = INVINCIBLE_ITEM_LIFETIME_MS;
     playSound("starSpawn");
+  }
+
+  /*
+   * 回復アイテムを出現させる
+   */
+  function spawnHealItem() {
+    if (hitPoints >= maxHitPoints()) {
+      return;
+    }
+
+    let validPosition = false;
+
+    while (!validPosition) {
+      healItem.x = randomGridPosition(WIDTH - healItem.width);
+      healItem.y =
+        SCORE_BAR_HEIGHT +
+        randomGridPosition(HEIGHT - SCORE_BAR_HEIGHT - healItem.height);
+
+      validPosition =
+        !checkCollision(healItem, coin) &&
+        !checkCollision(healItem, player) &&
+        !(twoPlayerMode && checkCollision(healItem, player2)) &&
+        !(
+          invincibleItem.active &&
+          checkCollision(healItem, invincibleItem)
+        ) &&
+        !enemies.some((enemy) => checkCollision(healItem, enemy));
+    }
+
+    healItem.active = true;
+    healItem.remainingMs = HEAL_ITEM_LIFETIME_MS;
+    playSound("healSpawn");
   }
 
   function getActivePlayers() {
@@ -1733,10 +1793,21 @@
       Math.random() < INVINCIBLE_ITEM_CHANCE
     ) {
       spawnInvincibleItem();
+    } else if (
+      !healItem.active &&
+      healCooldownCoins <= 0 &&
+      hitPoints < maxHitPoints() &&
+      Math.random() < HEAL_ITEM_CHANCE
+    ) {
+      spawnHealItem();
     }
 
     if (starCooldownCoins > 0) {
       starCooldownCoins--;
+    }
+
+    if (healCooldownCoins > 0) {
+      healCooldownCoins--;
     }
   }
 
@@ -1758,6 +1829,19 @@
           setPlayerInvincibleMs(target, INVINCIBLE_DURATION_MS);
           starCooldownCoins = STAR_COOLDOWN_COINS;
           playSound("starGet");
+          break;
+        }
+      }
+    }
+
+    if (healItem.active) {
+      for (const target of activePlayers) {
+        if (checkCollision(target, healItem)) {
+          healItem.active = false;
+          healItem.remainingMs = 0;
+          healCooldownCoins = HEAL_COOLDOWN_COINS;
+          hitPoints = Math.min(maxHitPoints(), hitPoints + 1);
+          playSound("healGet");
           break;
         }
       }
@@ -1898,6 +1982,27 @@
     ctx.fillRect(x + 2, y + 2, 6, 6);
 
     ctx.fillStyle = "#2bb8c8";
+    ctx.fillRect(x + 4, y + 4, 2, 2);
+  }
+
+  function drawHealItem() {
+    if (!healItem.active) {
+      return;
+    }
+
+    const x = healItem.x;
+    const y = healItem.y;
+    const blink = Math.floor(performance.now() / 180) % 2 === 0;
+
+    ctx.fillStyle = blink ? "#7CFC00" : "#b8ff70";
+    ctx.fillRect(x + 2, y + 1, 2, 2);
+    ctx.fillRect(x + 6, y + 1, 2, 2);
+    ctx.fillRect(x + 1, y + 3, 8, 3);
+    ctx.fillRect(x + 2, y + 6, 6, 2);
+    ctx.fillRect(x + 3, y + 8, 4, 1);
+    ctx.fillRect(x + 4, y + 9, 2, 1);
+
+    ctx.fillStyle = "#2e7d32";
     ctx.fillRect(x + 4, y + 4, 2, 2);
   }
 
@@ -2398,6 +2503,15 @@
       }
     }
 
+    if (healItem.active) {
+      healItem.remainingMs -= deltaMs;
+
+      if (healItem.remainingMs <= 0) {
+        healItem.active = false;
+        healItem.remainingMs = 0;
+      }
+    }
+
     updatePlayers();
     updateEnemies();
     checkGameCollisions();
@@ -2410,6 +2524,7 @@
     drawBackground();
     drawCoin();
     drawInvincibleItem();
+    drawHealItem();
     drawEnemies();
     drawPlayers();
     drawScore();
@@ -2461,7 +2576,10 @@
     hitPoints = maxHitPoints();
     invincibleItem.active = false;
     invincibleItem.remainingMs = 0;
+    healItem.active = false;
+    healItem.remainingMs = 0;
     starCooldownCoins = 0;
+    healCooldownCoins = 0;
     runTimeMs = 0;
     runStartedAt = Date.now();
     runEndedAt = 0;
