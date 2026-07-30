@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.34">
+  <meta name="app-version" content="1.0.35">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1043,21 +1043,52 @@
     tickBgm();
   }
 
-  function onUserGestureForAudio() {
+  function isUiGestureTarget(target) {
+    if (!target || !target.closest) {
+      return false;
+    }
+
+    return Boolean(
+      target.closest(
+        "button, input, select, textarea, label, a, .settings-panel, .account-bar, .history-panel, .info, .touch-controls"
+      )
+    );
+  }
+
+  function onUserGestureForAudio(event) {
     unlockAudio().then((ctxAudio) => {
       if (!ctxAudio || ctxAudio.state !== "running") {
         return;
       }
 
-      if (needsStartGesture) {
-        needsStartGesture = false;
-        beginCountdown();
+      if (!needsStartGesture) {
+        return;
       }
+
+      if (event && isUiGestureTarget(event.target)) {
+        return;
+      }
+
+      needsStartGesture = false;
+      beginCountdown();
     });
   }
 
   window.addEventListener("pointerdown", onUserGestureForAudio);
-  window.addEventListener("keydown", onUserGestureForAudio);
+  window.addEventListener("keydown", (event) => {
+    const targetTag = event.target && event.target.tagName;
+    const typingInField =
+      targetTag === "INPUT" ||
+      targetTag === "TEXTAREA" ||
+      targetTag === "SELECT";
+
+    if (typingInField) {
+      unlockAudio();
+      return;
+    }
+
+    onUserGestureForAudio(event);
+  });
   window.addEventListener("touchstart", onUserGestureForAudio);
 
   /*
@@ -2133,6 +2164,12 @@
 
     difficulty = normalized;
     saveTimeSettings();
+
+    if (needsStartGesture) {
+      hitPoints = maxHitPoints();
+      return;
+    }
+
     restartGame();
   }
 
