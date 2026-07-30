@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.37">
+  <meta name="app-version" content="1.0.38">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -513,6 +513,7 @@
       <label>2Pモード</label>
       <button type="button" id="modeCoopButton">協力</button>
       <button type="button" id="modeVersusButton">対戦</button>
+      <button type="button" id="modeVersus2Button">対戦2</button>
       <button type="button" id="modeHardCoopButton">HARD協力</button>
     </div>
     <div class="settings-row">
@@ -573,6 +574,7 @@
   const difficultyHardButton = document.getElementById("difficultyHardButton");
   const modeCoopButton = document.getElementById("modeCoopButton");
   const modeVersusButton = document.getElementById("modeVersusButton");
+  const modeVersus2Button = document.getElementById("modeVersus2Button");
   const modeHardCoopButton = document.getElementById("modeHardCoopButton");
   const timeFormat24Button = document.getElementById("timeFormat24Button");
   const timeFormat12Button = document.getElementById("timeFormat12Button");
@@ -619,7 +621,12 @@
   }
 
   function normalizeTwoPlayerRule(value) {
-    if (value === "versus" || value === "hardcoop" || value === "coop") {
+    if (
+      value === "versus" ||
+      value === "versus2" ||
+      value === "hardcoop" ||
+      value === "coop"
+    ) {
       return value;
     }
 
@@ -2245,6 +2252,7 @@
     difficultyHardButton.classList.toggle("active", difficulty === "hard");
     modeCoopButton.classList.toggle("active", twoPlayerRule === "coop");
     modeVersusButton.classList.toggle("active", twoPlayerRule === "versus");
+    modeVersus2Button.classList.toggle("active", twoPlayerRule === "versus2");
     modeHardCoopButton.classList.toggle(
       "active",
       twoPlayerRule === "hardcoop"
@@ -2348,6 +2356,10 @@
       return "対戦";
     }
 
+    if (key === "versus2") {
+      return "対戦2";
+    }
+
     if (key === "hardcoop") {
       return "HARD協力";
     }
@@ -2393,6 +2405,19 @@
 
     if (twoPlayerRule === "versus") {
       versusWinner = target === player ? "p2" : "p1";
+      triggerGameOver();
+      return;
+    }
+
+    if (twoPlayerRule === "versus2") {
+      if (score > score2) {
+        versusWinner = "p1";
+      } else if (score2 > score) {
+        versusWinner = "p2";
+      } else {
+        versusWinner = "draw";
+      }
+
       triggerGameOver();
       return;
     }
@@ -2523,22 +2548,34 @@
 
     let bodyY = HEIGHT / 2 - 8;
 
-    if (twoPlayerMode && twoPlayerRule === "versus" && versusWinner) {
-      const p1Win = versusWinner === "p1";
-      ctx.fillStyle = p1Win ? "#ffe566" : "#ff706b";
-      ctx.fillText(
-        p1Win ? "P1 YOU WIN!" : "P1 YOU LOSE...",
-        WIDTH / 2,
-        bodyY
-      );
-      bodyY += 14;
-      ctx.fillStyle = p1Win ? "#ff706b" : "#ffe566";
-      ctx.fillText(
-        p1Win ? "P2 YOU LOSE..." : "P2 YOU WIN!",
-        WIDTH / 2,
-        bodyY
-      );
-      bodyY += 16;
+    if (
+      twoPlayerMode &&
+      (twoPlayerRule === "versus" || twoPlayerRule === "versus2") &&
+      versusWinner
+    ) {
+      if (versusWinner === "draw") {
+        ctx.fillStyle = "#ffcc00";
+        ctx.fillText("P1 DRAW", WIDTH / 2, bodyY);
+        bodyY += 14;
+        ctx.fillText("P2 DRAW", WIDTH / 2, bodyY);
+        bodyY += 16;
+      } else {
+        const p1Win = versusWinner === "p1";
+        ctx.fillStyle = p1Win ? "#ffe566" : "#ff706b";
+        ctx.fillText(
+          p1Win ? "P1 YOU WIN!" : "P1 YOU LOSE...",
+          WIDTH / 2,
+          bodyY
+        );
+        bodyY += 14;
+        ctx.fillStyle = p1Win ? "#ff706b" : "#ffe566";
+        ctx.fillText(
+          p1Win ? "P2 YOU LOSE..." : "P2 YOU WIN!",
+          WIDTH / 2,
+          bodyY
+        );
+        bodyY += 16;
+      }
     }
 
     ctx.fillStyle = "white";
@@ -3383,6 +3420,10 @@
 
   modeVersusButton.addEventListener("click", () => {
     setTwoPlayerRule("versus");
+  });
+
+  modeVersus2Button.addEventListener("click", () => {
+    setTwoPlayerRule("versus2");
   });
 
   modeHardCoopButton.addEventListener("click", () => {

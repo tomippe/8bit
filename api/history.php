@@ -39,7 +39,7 @@ if ($method === 'POST') {
         ? $difficultyRaw
         : 'normal';
     $twoPlayerRuleRaw = (string) ($body['twoPlayerRule'] ?? '');
-    $twoPlayerRule = in_array($twoPlayerRuleRaw, ['coop', 'versus', 'hardcoop'], true)
+    $twoPlayerRule = in_array($twoPlayerRuleRaw, ['coop', 'versus', 'versus2', 'hardcoop'], true)
         ? $twoPlayerRuleRaw
         : null;
     $score = (int) ($body['score'] ?? 0);
