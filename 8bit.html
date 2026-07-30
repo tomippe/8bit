@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.34">
+  <meta name="app-version" content="1.0.35">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -510,6 +510,11 @@
       <button type="button" id="difficultyHardButton">HARD</button>
     </div>
     <div class="settings-row">
+      <label>2Pライフ</label>
+      <button type="button" id="lifeSharedButton">同じ</button>
+      <button type="button" id="lifeSeparateButton">別</button>
+    </div>
+    <div class="settings-row">
       <label>時刻表記</label>
       <button type="button" id="timeFormat24Button">24時間</button>
       <button type="button" id="timeFormat12Button">12時間</button>
@@ -565,6 +570,8 @@
     "difficultyNormalButton"
   );
   const difficultyHardButton = document.getElementById("difficultyHardButton");
+  const lifeSharedButton = document.getElementById("lifeSharedButton");
+  const lifeSeparateButton = document.getElementById("lifeSeparateButton");
   const timeFormat24Button = document.getElementById("timeFormat24Button");
   const timeFormat12Button = document.getElementById("timeFormat12Button");
   const ampmOnButton = document.getElementById("ampmOnButton");
@@ -590,6 +597,7 @@
   const BGM_ENABLED_KEY = "coinHunterBgmEnabled";
   const HISTORY_ENABLED_KEY = "coinHunterHistoryEnabled";
   const DIFFICULTY_KEY = "coinHunterDifficulty";
+  const LIFE_SHARED_KEY = "coinHunterLifeShared2P";
   const API_BASE = "api";
 
   const DIFFICULTY_HITS = {
@@ -628,6 +636,7 @@
   let invincibleRemainingMs = 0;
   let invincibleRemainingMs2 = 0;
   let damageIframeMs = 0;
+  let damageIframeMs2 = 0;
   let starCooldownCoins = 0;
   let healCooldownCoins = 0;
   let runTimeMs = 0;
@@ -635,7 +644,9 @@
   let runEndedAt = 0;
   let twoPlayerMode = false;
   let difficulty = normalizeDifficulty(localStorage.getItem(DIFFICULTY_KEY));
+  let sharedLife2P = localStorage.getItem(LIFE_SHARED_KEY) !== "0";
   let hitPoints = DIFFICULTY_HITS[difficulty];
+  let hitPoints2 = DIFFICULTY_HITS[difficulty];
   let loggedInUsername = null;
   let loginAt = 0;
   let authPanelOpen = false;
@@ -1637,7 +1648,7 @@
    * 回復アイテムを出現させる
    */
   function spawnHealItem() {
-    if (hitPoints >= maxHitPoints()) {
+    if (!canSpawnHealItem()) {
       return;
     }
 
@@ -1655,8 +1666,77 @@
     playSound("healSpawn");
   }
 
+  function isSeparateLifeMode() {
+    return twoPlayerMode && !sharedLife2P;
+  }
+
+  function getPlayerHitPoints(target) {
+    if (isSeparateLifeMode() && target === player2) {
+      return hitPoints2;
+    }
+
+    return hitPoints;
+  }
+
+  function setPlayerHitPoints(target, value) {
+    if (isSeparateLifeMode() && target === player2) {
+      hitPoints2 = value;
+    } else {
+      hitPoints = value;
+    }
+  }
+
+  function getDamageIframeMs(target) {
+    if (isSeparateLifeMode() && target === player2) {
+      return damageIframeMs2;
+    }
+
+    return damageIframeMs;
+  }
+
+  function setDamageIframeMs(target, value) {
+    if (isSeparateLifeMode() && target === player2) {
+      damageIframeMs2 = value;
+    } else if (isSeparateLifeMode()) {
+      damageIframeMs = value;
+    } else {
+      damageIframeMs = value;
+      damageIframeMs2 = value;
+    }
+  }
+
+  function canSpawnHealItem() {
+    if (isSeparateLifeMode()) {
+      return hitPoints < maxHitPoints() || hitPoints2 < maxHitPoints();
+    }
+
+    return hitPoints < maxHitPoints();
+  }
+
+  function isPlayerAlive(target) {
+    return getPlayerHitPoints(target) > 0;
+  }
+
   function getActivePlayers() {
-    return twoPlayerMode ? [player, player2] : [player];
+    if (!twoPlayerMode) {
+      return isPlayerAlive(player) ? [player] : [];
+    }
+
+    if (!isSeparateLifeMode()) {
+      return hitPoints > 0 ? [player, player2] : [];
+    }
+
+    const players = [];
+
+    if (isPlayerAlive(player)) {
+      players.push(player);
+    }
+
+    if (isPlayerAlive(player2)) {
+      players.push(player2);
+    }
+
+    return players;
   }
 
   function getPlayerInvincibleMs(target) {
@@ -1713,14 +1793,16 @@
   }
 
   function updatePlayers() {
-    updateOnePlayer(player, {
-      left: ["ArrowLeft"],
-      right: ["ArrowRight"],
-      up: ["ArrowUp"],
-      down: ["ArrowDown"]
-    });
+    if (isPlayerAlive(player)) {
+      updateOnePlayer(player, {
+        left: ["ArrowLeft"],
+        right: ["ArrowRight"],
+        up: ["ArrowUp"],
+        down: ["ArrowDown"]
+      });
+    }
 
-    if (twoPlayerMode) {
+    if (twoPlayerMode && isPlayerAlive(player2)) {
       updateOnePlayer(player2, {
         left: ["a", "A"],
         right: ["d", "D"],
@@ -1842,7 +1924,7 @@
     if (
       !healItem.active &&
       healCooldownCoins <= 0 &&
-      hitPoints < maxHitPoints() &&
+      canSpawnHealItem() &&
       Math.random() < HEAL_ITEM_CHANCE
     ) {
       spawnHealItem();
@@ -1886,7 +1968,10 @@
           healItem.active = false;
           healItem.remainingMs = 0;
           healCooldownCoins = HEAL_COOLDOWN_COINS;
-          hitPoints = Math.min(maxHitPoints(), hitPoints + 1);
+          setPlayerHitPoints(
+            target,
+            Math.min(maxHitPoints(), getPlayerHitPoints(target) + 1)
+          );
           playSound("healGet");
           break;
         }
@@ -1909,8 +1994,8 @@
             removed = true;
             break;
           }
-        } else if (damageIframeMs <= 0) {
-          applyEnemyDamage();
+        } else if (getDamageIframeMs(target) <= 0) {
+          applyEnemyDamage(target);
 
           if (gameOver) {
             return;
@@ -1946,8 +2031,12 @@
    * プレイヤーを描く
    */
   function drawOnePlayer(target, invincibleMs) {
+    if (!isPlayerAlive(target)) {
+      return;
+    }
+
     const isInvincible = invincibleMs > 0;
-    const isDamaged = damageIframeMs > 0;
+    const isDamaged = getDamageIframeMs(target) > 0;
     const flashOn =
       (!isInvincible && !isDamaged) ||
       Math.floor(performance.now() / 100) % 2 === 0;
@@ -2128,6 +2217,8 @@
     difficultyEasyButton.classList.toggle("active", difficulty === "easy");
     difficultyNormalButton.classList.toggle("active", difficulty === "normal");
     difficultyHardButton.classList.toggle("active", difficulty === "hard");
+    lifeSharedButton.classList.toggle("active", sharedLife2P);
+    lifeSeparateButton.classList.toggle("active", !sharedLife2P);
     timeFormat24Button.classList.toggle("active", timeFormat === "24");
     timeFormat12Button.classList.toggle("active", timeFormat === "12");
     ampmOnButton.classList.toggle("active", showAmPm);
@@ -2143,6 +2234,7 @@
 
   function saveTimeSettings() {
     localStorage.setItem(DIFFICULTY_KEY, difficulty);
+    localStorage.setItem(LIFE_SHARED_KEY, sharedLife2P ? "1" : "0");
     localStorage.setItem(TIME_FORMAT_KEY, timeFormat);
     localStorage.setItem(SHOW_AMPM_KEY, showAmPm ? "1" : "0");
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
@@ -2166,7 +2258,24 @@
     saveTimeSettings();
 
     if (needsStartGesture) {
-      hitPoints = maxHitPoints();
+      resetHitPoints();
+      return;
+    }
+
+    restartGame();
+  }
+
+  function setSharedLife2P(shared) {
+    if (sharedLife2P === shared) {
+      updateSettingsView();
+      return;
+    }
+
+    sharedLife2P = shared;
+    saveTimeSettings();
+
+    if (needsStartGesture) {
+      resetHitPoints();
       return;
     }
 
@@ -2175,6 +2284,13 @@
 
   function maxHitPoints() {
     return DIFFICULTY_HITS[difficulty];
+  }
+
+  function resetHitPoints() {
+    hitPoints = maxHitPoints();
+    hitPoints2 = maxHitPoints();
+    damageIframeMs = 0;
+    damageIframeMs2 = 0;
   }
 
   function difficultyLabel(value) {
@@ -2191,21 +2307,28 @@
     return "NORMAL";
   }
 
-  function applyEnemyDamage() {
-    if (gameOver || damageIframeMs > 0) {
+  function applyEnemyDamage(target) {
+    if (gameOver || getDamageIframeMs(target) > 0) {
       return;
     }
 
-    hitPoints -= 1;
+    const nextHits = getPlayerHitPoints(target) - 1;
+    setPlayerHitPoints(target, Math.max(0, nextHits));
     playSound("enemyHit");
+    setDamageIframeMs(target, HIT_IFRAME_MS);
 
-    if (hitPoints <= 0) {
-      hitPoints = 0;
-      triggerGameOver();
+    if (!isSeparateLifeMode()) {
+      if (hitPoints <= 0) {
+        hitPoints = 0;
+        triggerGameOver();
+      }
+
       return;
     }
 
-    damageIframeMs = HIT_IFRAME_MS;
+    if (hitPoints <= 0 && hitPoints2 <= 0) {
+      triggerGameOver();
+    }
   }
 
   function updateLoginTimeLabel() {
@@ -2254,10 +2377,20 @@
       ctx.fillStyle = "#ffcc00";
       ctx.fillText(`TOT ${total}`, 96, textY);
       ctx.fillStyle = "#ff706b";
-      ctx.fillText(`L${hitPoints}`, 140, textY);
-      ctx.fillStyle = "white";
-      ctx.fillText(`E ${enemies.length}`, 162, textY);
-      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 190, textY);
+
+      if (isSeparateLifeMode()) {
+        ctx.fillText(`L1 ${hitPoints}`, 140, textY);
+        ctx.fillStyle = "#81c784";
+        ctx.fillText(`L2 ${hitPoints2}`, 172, textY);
+        ctx.fillStyle = "white";
+        ctx.fillText(`E ${enemies.length}`, 204, textY);
+        ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 228, textY);
+      } else {
+        ctx.fillText(`L${hitPoints}`, 140, textY);
+        ctx.fillStyle = "white";
+        ctx.fillText(`E ${enemies.length}`, 162, textY);
+        ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 190, textY);
+      }
     } else {
       ctx.fillText(`SCORE ${score}`, 4, textY);
       ctx.fillStyle = "#ff706b";
@@ -2546,6 +2679,10 @@
       damageIframeMs = Math.max(0, damageIframeMs - deltaMs);
     }
 
+    if (damageIframeMs2 > 0) {
+      damageIframeMs2 = Math.max(0, damageIframeMs2 - deltaMs);
+    }
+
     if (invincibleItem.active) {
       invincibleItem.remainingMs -= deltaMs;
 
@@ -2625,7 +2762,8 @@
     invincibleRemainingMs = 0;
     invincibleRemainingMs2 = 0;
     damageIframeMs = 0;
-    hitPoints = maxHitPoints();
+    damageIframeMs2 = 0;
+    resetHitPoints();
     invincibleItem.active = false;
     invincibleItem.remainingMs = 0;
     healItem.active = false;
@@ -3136,6 +3274,14 @@
 
   difficultyHardButton.addEventListener("click", () => {
     setDifficulty("hard");
+  });
+
+  lifeSharedButton.addEventListener("click", () => {
+    setSharedLife2P(true);
+  });
+
+  lifeSeparateButton.addEventListener("click", () => {
+    setSharedLife2P(false);
   });
 
   ampmOnButton.addEventListener("click", () => {
