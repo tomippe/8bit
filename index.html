@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.29">
+  <meta name="app-version" content="1.0.31">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -504,6 +504,12 @@
   <div class="settings-panel">
     <h2>設定</h2>
     <div class="settings-row">
+      <label>難易度</label>
+      <button type="button" id="difficultyEasyButton">EASY</button>
+      <button type="button" id="difficultyNormalButton">NORMAL</button>
+      <button type="button" id="difficultyHardButton">HARD</button>
+    </div>
+    <div class="settings-row">
       <label>時刻表記</label>
       <button type="button" id="timeFormat24Button">24時間</button>
       <button type="button" id="timeFormat12Button">12時間</button>
@@ -549,6 +555,11 @@
   const loginTimeLabel = document.getElementById("loginTimeLabel");
   const historyPanel = document.getElementById("historyPanel");
   const historyList = document.getElementById("historyList");
+  const difficultyEasyButton = document.getElementById("difficultyEasyButton");
+  const difficultyNormalButton = document.getElementById(
+    "difficultyNormalButton"
+  );
+  const difficultyHardButton = document.getElementById("difficultyHardButton");
   const timeFormat24Button = document.getElementById("timeFormat24Button");
   const timeFormat12Button = document.getElementById("timeFormat12Button");
   const ampmOnButton = document.getElementById("ampmOnButton");
@@ -570,7 +581,23 @@
   const SHOW_AMPM_KEY = "coinHunterShowAmPm";
   const SOUND_ENABLED_KEY = "coinHunterSoundEnabled";
   const BGM_ENABLED_KEY = "coinHunterBgmEnabled";
+  const DIFFICULTY_KEY = "coinHunterDifficulty";
   const API_BASE = "api";
+
+  const DIFFICULTY_HITS = {
+    easy: 5,
+    normal: 3,
+    hard: 1
+  };
+  const HIT_IFRAME_MS = 1200;
+
+  function normalizeDifficulty(value) {
+    if (value === "easy" || value === "hard" || value === "normal") {
+      return value;
+    }
+
+    return "normal";
+  }
 
   const keys = {};
 
@@ -592,11 +619,14 @@
   let lastFrameTime = performance.now();
   let invincibleRemainingMs = 0;
   let invincibleRemainingMs2 = 0;
+  let damageIframeMs = 0;
   let starCooldownCoins = 0;
   let runTimeMs = 0;
   let runStartedAt = Date.now();
   let runEndedAt = 0;
   let twoPlayerMode = false;
+  let difficulty = normalizeDifficulty(localStorage.getItem(DIFFICULTY_KEY));
+  let hitPoints = DIFFICULTY_HITS[difficulty];
   let loggedInUsername = null;
   let loginAt = 0;
   let authPanelOpen = false;
@@ -1740,9 +1770,14 @@
             removed = true;
             break;
           }
-        } else {
-          triggerGameOver();
-          return;
+        } else if (damageIframeMs <= 0) {
+          applyEnemyDamage();
+
+          if (gameOver) {
+            return;
+          }
+
+          break;
         }
       }
 
@@ -1773,8 +1808,10 @@
    */
   function drawOnePlayer(target, invincibleMs) {
     const isInvincible = invincibleMs > 0;
+    const isDamaged = damageIframeMs > 0;
     const flashOn =
-      !isInvincible || Math.floor(performance.now() / 100) % 2 === 0;
+      (!isInvincible && !isDamaged) ||
+      Math.floor(performance.now() / 100) % 2 === 0;
 
     if (!flashOn) {
       ctx.globalAlpha = 0.35;
@@ -1928,6 +1965,9 @@
   }
 
   function updateSettingsView() {
+    difficultyEasyButton.classList.toggle("active", difficulty === "easy");
+    difficultyNormalButton.classList.toggle("active", difficulty === "normal");
+    difficultyHardButton.classList.toggle("active", difficulty === "hard");
     timeFormat24Button.classList.toggle("active", timeFormat === "24");
     timeFormat12Button.classList.toggle("active", timeFormat === "12");
     ampmOnButton.classList.toggle("active", showAmPm);
@@ -1940,6 +1980,7 @@
   }
 
   function saveTimeSettings() {
+    localStorage.setItem(DIFFICULTY_KEY, difficulty);
     localStorage.setItem(TIME_FORMAT_KEY, timeFormat);
     localStorage.setItem(SHOW_AMPM_KEY, showAmPm ? "1" : "0");
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
@@ -1948,6 +1989,54 @@
     updateLoginTimeLabel();
     renderHistoryList();
     syncBgm();
+  }
+
+  function setDifficulty(nextDifficulty) {
+    const normalized = normalizeDifficulty(nextDifficulty);
+
+    if (difficulty === normalized) {
+      updateSettingsView();
+      return;
+    }
+
+    difficulty = normalized;
+    saveTimeSettings();
+    restartGame();
+  }
+
+  function maxHitPoints() {
+    return DIFFICULTY_HITS[difficulty];
+  }
+
+  function difficultyLabel(value) {
+    const key = normalizeDifficulty(value || difficulty);
+
+    if (key === "easy") {
+      return "EASY";
+    }
+
+    if (key === "hard") {
+      return "HARD";
+    }
+
+    return "NORMAL";
+  }
+
+  function applyEnemyDamage() {
+    if (gameOver || damageIframeMs > 0) {
+      return;
+    }
+
+    hitPoints -= 1;
+    playSound("enemyHit");
+
+    if (hitPoints <= 0) {
+      hitPoints = 0;
+      triggerGameOver();
+      return;
+    }
+
+    damageIframeMs = HIT_IFRAME_MS;
   }
 
   function updateLoginTimeLabel() {
@@ -1995,13 +2084,18 @@
       ctx.fillText(`2PSC ${score2}`, 42, textY);
       ctx.fillStyle = "#ffcc00";
       ctx.fillText(`TOT ${total}`, 96, textY);
+      ctx.fillStyle = "#ff706b";
+      ctx.fillText(`L${hitPoints}`, 140, textY);
       ctx.fillStyle = "white";
-      ctx.fillText(`E ${enemies.length}`, 140, textY);
-      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 168, textY);
+      ctx.fillText(`E ${enemies.length}`, 162, textY);
+      ctx.fillText(`T ${formatRunTime(runTimeMs)}`, 190, textY);
     } else {
       ctx.fillText(`SCORE ${score}`, 4, textY);
-      ctx.fillText(`ENEMY ${enemies.length}`, 78, textY);
-      ctx.fillText(`TIME ${formatRunTime(runTimeMs)}`, 145, textY);
+      ctx.fillStyle = "#ff706b";
+      ctx.fillText(`LIFE ${hitPoints}`, 68, textY);
+      ctx.fillStyle = "white";
+      ctx.fillText(`ENEMY ${enemies.length}`, 118, textY);
+      ctx.fillText(`TIME ${formatRunTime(runTimeMs)}`, 180, textY);
     }
 
     if (invincibleRemainingMs > 0) {
@@ -2050,6 +2144,10 @@
     ctx.font = '16px "DotGothic16", monospace';
     ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2 - 28);
 
+    ctx.fillStyle = "#ffcc00";
+    ctx.font = '10px "DotGothic16", monospace';
+    ctx.fillText(difficultyLabel(difficulty), WIDTH / 2, HEIGHT / 2 - 14);
+
     ctx.fillStyle = "white";
     ctx.font = '10px "DotGothic16", monospace';
 
@@ -2057,35 +2155,35 @@
       ctx.fillText(
         `SC: ${score}  2PSC: ${score2}  TOT: ${score + score2}`,
         WIDTH / 2,
-        HEIGHT / 2 - 6
+        HEIGHT / 2 + 2
       );
       ctx.fillText(
         `HI2: ${highScore}`,
         WIDTH / 2,
-        HEIGHT / 2 + 8
+        HEIGHT / 2 + 16
       );
     } else {
       ctx.fillText(
         `SCORE: ${score}  HI: ${highScore}`,
         WIDTH / 2,
-        HEIGHT / 2 - 6
+        HEIGHT / 2 + 2
       );
     }
 
     ctx.fillText(
       `TIME: ${formatRunTime(runTimeMs)}`,
       WIDTH / 2,
-      HEIGHT / 2 + 22
+      HEIGHT / 2 + 30
     );
     ctx.fillText(
       `${formatClockHm(runStartedAt)}〜${formatClockHm(runEndedAt || Date.now())}`,
       WIDTH / 2,
-      HEIGHT / 2 + 36
+      HEIGHT / 2 + 44
     );
     ctx.fillText(
       "PRESS SPACE TO RESTART",
       WIDTH / 2,
-      HEIGHT / 2 + 52
+      HEIGHT / 2 + 60
     );
 
     ctx.textAlign = "left";
@@ -2275,6 +2373,10 @@
       );
     }
 
+    if (damageIframeMs > 0) {
+      damageIframeMs = Math.max(0, damageIframeMs - deltaMs);
+    }
+
     if (invincibleItem.active) {
       invincibleItem.remainingMs -= deltaMs;
 
@@ -2343,6 +2445,8 @@
     paused = false;
     invincibleRemainingMs = 0;
     invincibleRemainingMs2 = 0;
+    damageIframeMs = 0;
+    hitPoints = maxHitPoints();
     invincibleItem.active = false;
     invincibleItem.remainingMs = 0;
     starCooldownCoins = 0;
@@ -2464,6 +2568,7 @@
     historyList.innerHTML = playHistory
       .map((entry) => {
         const modeLabel = entry.mode === "2p" ? "2P" : "1P";
+        const diffLabel = difficultyLabel(entry.difficulty);
         const duration = formatRunTime(entry.durationMs || 0);
         const clock = `${formatClockHm(entry.startedAt)}〜${formatClockHm(entry.endedAt)}`;
         let scores = "";
@@ -2479,7 +2584,7 @@
         return `
           <div class="history-item" data-id="${entry.id}">
             <div class="history-item-body">
-              <div>[${modeLabel}] ${scores}</div>
+              <div>[${modeLabel}/${diffLabel}] ${scores}</div>
               <div class="history-item-meta">時間 ${duration}　${clock}</div>
             </div>
             <button type="button" class="history-delete" data-id="${entry.id}" aria-label="削除">×</button>
@@ -2520,6 +2625,7 @@
 
     const payload = {
       mode: twoPlayerMode ? "2p" : "1p",
+      difficulty,
       score,
       score2: twoPlayerMode ? score2 : 0,
       totalScore: twoPlayerMode ? score + score2 : score,
@@ -2836,6 +2942,18 @@
   timeFormat12Button.addEventListener("click", () => {
     timeFormat = "12";
     saveTimeSettings();
+  });
+
+  difficultyEasyButton.addEventListener("click", () => {
+    setDifficulty("easy");
+  });
+
+  difficultyNormalButton.addEventListener("click", () => {
+    setDifficulty("normal");
+  });
+
+  difficultyHardButton.addEventListener("click", () => {
+    setDifficulty("hard");
   });
 
   ampmOnButton.addEventListener("click", () => {

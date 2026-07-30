@@ -34,6 +34,10 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $body = jsonBody();
     $mode = ($body['mode'] ?? '') === '2p' ? '2p' : '1p';
+    $difficultyRaw = (string) ($body['difficulty'] ?? 'normal');
+    $difficulty = in_array($difficultyRaw, ['easy', 'normal', 'hard'], true)
+        ? $difficultyRaw
+        : 'normal';
     $score = (int) ($body['score'] ?? 0);
     $score2 = (int) ($body['score2'] ?? 0);
     $totalScore = (int) ($body['totalScore'] ?? ($score + $score2));
@@ -53,6 +57,7 @@ if ($method === 'POST') {
     $entry = [
         'id' => bin2hex(random_bytes(8)),
         'mode' => $mode,
+        'difficulty' => $difficulty,
         'score' => $score,
         'score2' => $mode === '2p' ? $score2 : 0,
         'totalScore' => $mode === '2p' ? $totalScore : $score,
