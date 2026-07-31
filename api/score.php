@@ -54,9 +54,16 @@ if ($method === 'POST') {
         $users[$username]['highScore2P'] = $scores['highScore2P'];
     }
 
+    if (array_key_exists('rankingEnabled', $body)) {
+        $users[$username]['rankingEnabled'] = (bool) $body['rankingEnabled'];
+    }
+
     saveUsers($users);
 
-    respond(array_merge(['ok' => true], $scores));
+    respond(array_merge(
+        ['ok' => true, 'rankingEnabled' => ($users[$username]['rankingEnabled'] ?? true) !== false],
+        $scores
+    ));
 }
 
 if ($method === 'DELETE') {

@@ -20,6 +20,10 @@ foreach ($users as $username => $user) {
         continue;
     }
 
+    if (($user['rankingEnabled'] ?? true) === false) {
+        continue;
+    }
+
     $highScore = (int) ($user['highScore'] ?? 0);
     $highScore2P = (int) ($user['highScore2P'] ?? 0);
 

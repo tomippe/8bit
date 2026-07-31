@@ -76,9 +76,12 @@ function liveList(array $live): array
             continue;
         }
 
+        if (($entry['rankingEnabled'] ?? true) === false) {
+            continue;
+        }
+
         $rows[] = [
             'username' => $username,
-            'highScore' => (int) ($entry['highScore'] ?? 0),
             'currentScore' => (int) ($entry['currentScore'] ?? 0),
             'mode' => (($entry['mode'] ?? '') === '2p') ? '2p' : '1p',
             'updatedAt' => (int) ($entry['updatedAt'] ?? 0)
@@ -87,7 +90,6 @@ function liveList(array $live): array
 
     usort($rows, static function (array $a, array $b): int {
         return $b['currentScore'] <=> $a['currentScore']
-            ?: $b['highScore'] <=> $a['highScore']
             ?: strcmp($a['username'], $b['username']);
     });
 
@@ -126,6 +128,8 @@ if ($method === 'POST') {
         ? (int) $body['highScore2P']
         : null;
     $mode = (($body['mode'] ?? '') === '2p') ? '2p' : '1p';
+    $rankingEnabled = !array_key_exists('rankingEnabled', $body)
+        || (bool) $body['rankingEnabled'];
 
     if ($currentScore < 0) {
         respondError('スコアが不正です');
@@ -154,18 +158,30 @@ if ($method === 'POST') {
         $changed = true;
     }
 
+    $previousRanking = ($users[$username]['rankingEnabled'] ?? true) !== false;
+
+    if ($previousRanking !== $rankingEnabled) {
+        $users[$username]['rankingEnabled'] = $rankingEnabled;
+        $changed = true;
+    }
+
     if ($changed) {
         saveUsers($users);
     }
 
-    $displayHigh = $mode === '2p' ? $highScore2P : $highScore1P;
     $live = pruneLive(loadLive(), $now);
-    $live[$username] = [
-        'highScore' => $displayHigh,
-        'currentScore' => $currentScore,
-        'mode' => $mode,
-        'updatedAt' => $now
-    ];
+
+    if ($rankingEnabled) {
+        $live[$username] = [
+            'currentScore' => $currentScore,
+            'mode' => $mode,
+            'rankingEnabled' => true,
+            'updatedAt' => $now
+        ];
+    } else {
+        unset($live[$username]);
+    }
+
     saveLive($live);
 
     respond([
@@ -173,6 +189,7 @@ if ($method === 'POST') {
         'live' => liveList($live),
         'highScore' => $highScore1P,
         'highScore2P' => $highScore2P,
+        'rankingEnabled' => $rankingEnabled,
         'updatedAt' => $now
     ]);
 }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.41">
+  <meta name="app-version" content="1.0.42">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -594,7 +594,7 @@
   </div>
 
   <div class="ranking-panel">
-    <h2>世界ランキング</h2>
+    <h2>世界ランキング（ハイスコア）</h2>
     <div class="ranking-tabs">
       <button type="button" id="ranking1PButton" class="active">1P HI</button>
       <button type="button" id="ranking2PButton">2P HI</button>
@@ -605,8 +605,8 @@
   </div>
 
   <div class="live-panel">
-    <h2>現在のスコア</h2>
-    <div class="live-meta" id="liveScoreMeta">ハイスコアとコイン獲得数を自動更新</div>
+    <h2>コイン獲得数ランキング</h2>
+    <div class="live-meta" id="liveScoreMeta">いまのコイン獲得数を自動更新</div>
     <div id="liveScoreList" class="live-list">
       <div class="history-empty">読み込み中...</div>
     </div>
@@ -651,6 +651,11 @@
       <label>履歴登録</label>
       <button type="button" id="historyOnButton">する</button>
       <button type="button" id="historyOffButton">しない</button>
+    </div>
+    <div class="settings-row">
+      <label>ランキング掲載</label>
+      <button type="button" id="rankingOnButton">する</button>
+      <button type="button" id="rankingOffButton">しない</button>
     </div>
   </div>
 </div>
@@ -703,6 +708,8 @@
   const bgmOffButton = document.getElementById("bgmOffButton");
   const historyOnButton = document.getElementById("historyOnButton");
   const historyOffButton = document.getElementById("historyOffButton");
+  const rankingOnButton = document.getElementById("rankingOnButton");
+  const rankingOffButton = document.getElementById("rankingOffButton");
 
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -716,6 +723,7 @@
   const SOUND_ENABLED_KEY = "coinHunterSoundEnabled";
   const BGM_ENABLED_KEY = "coinHunterBgmEnabled";
   const HISTORY_ENABLED_KEY = "coinHunterHistoryEnabled";
+  const RANKING_ENABLED_KEY = "coinHunterRankingEnabled";
   const DIFFICULTY_KEY = "coinHunterDifficulty";
   const TWO_PLAYER_RULE_KEY = "coinHunterTwoPlayerRule";
   const API_BASE = "api";
@@ -800,6 +808,7 @@
   let soundEnabled = localStorage.getItem(SOUND_ENABLED_KEY) !== "0";
   let bgmEnabled = localStorage.getItem(BGM_ENABLED_KEY) !== "0";
   let historyEnabled = localStorage.getItem(HISTORY_ENABLED_KEY) !== "0";
+  let rankingEnabled = localStorage.getItem(RANKING_ENABLED_KEY) !== "0";
   let audioContext = null;
   let bgmGainNode = null;
   let bgmMode = null;
@@ -2390,6 +2399,8 @@
     bgmOffButton.classList.toggle("active", !bgmEnabled);
     historyOnButton.classList.toggle("active", historyEnabled);
     historyOffButton.classList.toggle("active", !historyEnabled);
+    rankingOnButton.classList.toggle("active", rankingEnabled);
+    rankingOffButton.classList.toggle("active", !rankingEnabled);
   }
 
   function saveTimeSettings() {
@@ -2400,6 +2411,7 @@
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "1" : "0");
     localStorage.setItem(BGM_ENABLED_KEY, bgmEnabled ? "1" : "0");
     localStorage.setItem(HISTORY_ENABLED_KEY, historyEnabled ? "1" : "0");
+    localStorage.setItem(RANKING_ENABLED_KEY, rankingEnabled ? "1" : "0");
     updateSettingsView();
     updateLoginTimeLabel();
     renderHistoryList();
@@ -3305,21 +3317,21 @@
   function renderLiveScores() {
     if (!liveScores.length) {
       liveScoreList.innerHTML =
-        '<div class="history-empty">いまプレイ中の人はいません</div>';
-      liveScoreMeta.textContent = "ハイスコアとコイン獲得数を自動更新";
+        '<div class="history-empty">いまコイン獲得中の人はいません</div>';
+      liveScoreMeta.textContent = "いまのコイン獲得数を自動更新";
       return;
     }
 
     liveScoreMeta.textContent = `プレイ中 ${liveScores.length}人　自動更新中`;
     liveScoreList.innerHTML = liveScores
-      .map((entry) => {
+      .map((entry, index) => {
         const isMe = loggedInUsername && entry.username === loggedInUsername;
         const modeLabel = entry.mode === "2p" ? "2P" : "1P";
         return `
           <div class="live-item${isMe ? " me" : ""}">
+            <span class="rank-pos">${index + 1}</span>
             <span class="live-name">[${modeLabel}] ${escapeHtml(entry.username)}</span>
             <span class="live-scores">
-              <span class="hi">HI ${entry.highScore}</span>
               <span class="cur">COIN ${entry.currentScore}</span>
             </span>
           </div>
@@ -3381,7 +3393,8 @@
           currentScore,
           highScore: highScore1P,
           highScore2P: highScore2P,
-          mode: twoPlayerMode ? "2p" : "1p"
+          mode: twoPlayerMode ? "2p" : "1p",
+          rankingEnabled
         })
       });
 
@@ -3504,7 +3517,8 @@
       method: "POST",
       body: JSON.stringify({
         highScore: candidate1P,
-        highScore2P: candidate2P
+        highScore2P: candidate2P,
+        rankingEnabled
       })
     });
 
@@ -3532,8 +3546,8 @@
     }
 
     const payload = twoPlayerMode
-      ? { highScore2P: value }
-      : { highScore: value };
+      ? { highScore2P: value, rankingEnabled }
+      : { highScore: value, rankingEnabled };
 
     apiRequest("score.php", {
       method: "POST",
@@ -3794,6 +3808,18 @@
   historyOffButton.addEventListener("click", () => {
     historyEnabled = false;
     saveTimeSettings();
+  });
+
+  rankingOnButton.addEventListener("click", () => {
+    rankingEnabled = true;
+    saveTimeSettings();
+    refreshOnlineBoards();
+  });
+
+  rankingOffButton.addEventListener("click", () => {
+    rankingEnabled = false;
+    saveTimeSettings();
+    refreshOnlineBoards();
   });
 
   accountToggleButton.addEventListener("click", () => {
