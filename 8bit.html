@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.42">
+  <meta name="app-version" content="1.0.43">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -579,9 +579,13 @@
   </div>
 
   <div class="ranking-panel">
-    <h2>世界ランキング（ハイスコア）</h2>
+    <h2>世界ランキング</h2>
     <div class="ranking-meta" id="worldRankingMeta">自動更新中</div>
     <div class="ranking-tabs">
+      <button type="button" id="rankingTypeHighButton" class="active">ハイスコア</button>
+      <button type="button" id="rankingTypeCoinsButton">コイン獲得数</button>
+    </div>
+    <div class="ranking-tabs" id="rankingHighSubTabs">
       <button type="button" id="ranking1PButton" class="active">1P HI</button>
       <button type="button" id="ranking2PButton">2P HI</button>
     </div>
@@ -663,6 +667,9 @@
   const historyList = document.getElementById("historyList");
   const worldRankingList = document.getElementById("worldRankingList");
   const worldRankingMeta = document.getElementById("worldRankingMeta");
+  const rankingTypeHighButton = document.getElementById("rankingTypeHighButton");
+  const rankingTypeCoinsButton = document.getElementById("rankingTypeCoinsButton");
+  const rankingHighSubTabs = document.getElementById("rankingHighSubTabs");
   const ranking1PButton = document.getElementById("ranking1PButton");
   const ranking2PButton = document.getElementById("ranking2PButton");
   const difficultyEasyButton = document.getElementById("difficultyEasyButton");
@@ -695,6 +702,7 @@
   const SCORE_BAR_HEIGHT = 14;
   const HIGH_SCORE_KEY = "coinHunterHighScore";
   const HIGH_SCORE_2P_KEY = "coinHunterHighScore2P";
+  const TOTAL_COINS_KEY = "coinHunterTotalCoins";
   const TIME_FORMAT_KEY = "coinHunterTimeFormat";
   const SHOW_AMPM_KEY = "coinHunterShowAmPm";
   const SOUND_ENABLED_KEY = "coinHunterSoundEnabled";
@@ -742,6 +750,8 @@
   let highScore2P = Number(localStorage.getItem(HIGH_SCORE_2P_KEY)) || 0;
   let highScore = highScore1P;
   let highScoreAtStart = highScore;
+  let totalCoins = Number(localStorage.getItem(TOTAL_COINS_KEY)) || 0;
+  let lastTotalCoinsSyncAt = 0;
   let gameOver = false;
   let historyRecorded = false;
   let confirmingClearData = false;
@@ -776,6 +786,8 @@
   let playHistory = [];
   let worldRanking1P = [];
   let worldRanking2P = [];
+  let worldRankingCoins = [];
+  let rankingType = "high";
   let rankingMode = "1p";
   let onlinePollTimer = null;
   let timeFormat = localStorage.getItem(TIME_FORMAT_KEY) === "12" ? "12" : "24";
@@ -2027,6 +2039,12 @@
 
     playSound("coin");
 
+    if (loggedInUsername) {
+      totalCoins += 1;
+      localStorage.setItem(TOTAL_COINS_KEY, String(totalCoins));
+      syncTotalCoinsThrottled();
+    }
+
     const best = leadingScore();
     const previousBest =
       collector === player2
@@ -3058,10 +3076,12 @@
   function executeClearSavedData() {
     localStorage.removeItem(HIGH_SCORE_KEY);
     localStorage.removeItem(HIGH_SCORE_2P_KEY);
+    localStorage.removeItem(TOTAL_COINS_KEY);
     highScore1P = 0;
     highScore2P = 0;
     highScore = 0;
     highScoreAtStart = 0;
+    totalCoins = 0;
     score = 0;
     score2 = 0;
     confirmingClearData = false;
@@ -3075,6 +3095,7 @@
           }
 
           setAccountStatus("アカウントのハイスコアを削除しました", "ok");
+          fetchWorldRanking();
         })
         .catch(() => {
           setAccountStatus("サーバーに接続できませんでした", "error");
@@ -3264,14 +3285,28 @@
   }
 
   function renderWorldRanking() {
+    rankingTypeHighButton.classList.toggle("active", rankingType === "high");
+    rankingTypeCoinsButton.classList.toggle("active", rankingType === "coins");
+    rankingHighSubTabs.style.display = rankingType === "high" ? "flex" : "none";
     ranking1PButton.classList.toggle("active", rankingMode === "1p");
     ranking2PButton.classList.toggle("active", rankingMode === "2p");
 
-    const rows = rankingMode === "2p" ? worldRanking2P : worldRanking1P;
+    let rows = [];
+    let emptyMessage = "まだランキングがありません";
+    let scoreKey = "highScore";
+    let scorePrefix = "HI";
+
+    if (rankingType === "coins") {
+      rows = worldRankingCoins;
+      scoreKey = "totalCoins";
+      scorePrefix = "COIN";
+      emptyMessage = "まだコイン獲得数がありません";
+    } else {
+      rows = rankingMode === "2p" ? worldRanking2P : worldRanking1P;
+    }
 
     if (!rows.length) {
-      worldRankingList.innerHTML =
-        '<div class="history-empty">まだランキングがありません</div>';
+      worldRankingList.innerHTML = `<div class="history-empty">${emptyMessage}</div>`;
       return;
     }
 
@@ -3282,7 +3317,7 @@
           <div class="rank-item${isMe ? " me" : ""}">
             <span class="rank-pos">${index + 1}</span>
             <span class="rank-name">${escapeHtml(entry.username)}</span>
-            <span class="rank-score">HI ${entry.highScore}</span>
+            <span class="rank-score">${scorePrefix} ${entry[scoreKey]}</span>
           </div>
         `;
       })
@@ -3299,6 +3334,9 @@
 
       worldRanking1P = Array.isArray(data.ranking1P) ? data.ranking1P : [];
       worldRanking2P = Array.isArray(data.ranking2P) ? data.ranking2P : [];
+      worldRankingCoins = Array.isArray(data.rankingCoins)
+        ? data.rankingCoins
+        : [];
       worldRankingMeta.textContent = `自動更新中　${new Date().toLocaleTimeString("ja-JP")}`;
       renderWorldRanking();
     } catch (error) {
@@ -3312,18 +3350,60 @@
     }
 
     try {
-      await apiRequest("score.php", {
+      const data = await apiRequest("score.php", {
         method: "POST",
         body: JSON.stringify({
           highScore: highScore1P,
           highScore2P: highScore2P,
+          totalCoins,
           rankingEnabled
         })
       });
+
+      if (data.ok && data.totalCoins !== undefined) {
+        totalCoins = Math.max(totalCoins, Number(data.totalCoins) || 0);
+        localStorage.setItem(TOTAL_COINS_KEY, String(totalCoins));
+      }
+
       await fetchWorldRanking();
     } catch (error) {
       // ignore
     }
+  }
+
+  function syncTotalCoinsThrottled() {
+    if (!loggedInUsername) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (now - lastTotalCoinsSyncAt < 2000) {
+      return;
+    }
+
+    lastTotalCoinsSyncAt = now;
+
+    apiRequest("score.php", {
+      method: "POST",
+      body: JSON.stringify({
+        totalCoins,
+        rankingEnabled
+      })
+    })
+      .then((data) => {
+        if (!data.ok) {
+          return;
+        }
+
+        if (data.totalCoins !== undefined) {
+          totalCoins = Math.max(totalCoins, Number(data.totalCoins) || 0);
+          localStorage.setItem(TOTAL_COINS_KEY, String(totalCoins));
+        }
+      })
+      .catch(() => {
+        // ignore
+      });
   }
 
   async function refreshOnlineBoards() {
@@ -3382,7 +3462,7 @@
     highScoreAtStart = highScore;
   }
 
-  function applyHighScores(score1P, score2P, resetStart = false) {
+  function applyHighScores(score1P, score2P, resetStart = false, coins) {
     if (score1P !== undefined && score1P !== null) {
       highScore1P = Number(score1P) || 0;
       localStorage.setItem(HIGH_SCORE_KEY, String(highScore1P));
@@ -3391,6 +3471,11 @@
     if (score2P !== undefined && score2P !== null) {
       highScore2P = Number(score2P) || 0;
       localStorage.setItem(HIGH_SCORE_2P_KEY, String(highScore2P));
+    }
+
+    if (coins !== undefined && coins !== null) {
+      totalCoins = Math.max(totalCoins, Number(coins) || 0);
+      localStorage.setItem(TOTAL_COINS_KEY, String(totalCoins));
     }
 
     highScore = twoPlayerMode ? highScore2P : highScore1P;
@@ -3403,6 +3488,7 @@
   async function syncHighScoreWithServer(preferred1P, preferred2P) {
     const local1P = Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
     const local2P = Number(localStorage.getItem(HIGH_SCORE_2P_KEY)) || 0;
+    const localCoins = Number(localStorage.getItem(TOTAL_COINS_KEY)) || 0;
     const candidate1P = Math.max(
       local1P,
       Number(preferred1P) || 0
@@ -3411,12 +3497,14 @@
       local2P,
       Number(preferred2P) || 0
     );
+    totalCoins = Math.max(totalCoins, localCoins);
 
     const data = await apiRequest("score.php", {
       method: "POST",
       body: JSON.stringify({
         highScore: candidate1P,
         highScore2P: candidate2P,
+        totalCoins,
         rankingEnabled
       })
     });
@@ -3425,7 +3513,7 @@
       throw new Error(data.error || "同期に失敗しました");
     }
 
-    applyHighScores(data.highScore, data.highScore2P, true);
+    applyHighScores(data.highScore, data.highScore2P, true, data.totalCoins);
     return data;
   }
 
@@ -3445,8 +3533,8 @@
     }
 
     const payload = twoPlayerMode
-      ? { highScore2P: value, rankingEnabled }
-      : { highScore: value, rankingEnabled };
+      ? { highScore2P: value, totalCoins, rankingEnabled }
+      : { highScore: value, totalCoins, rankingEnabled };
 
     apiRequest("score.php", {
       method: "POST",
@@ -3458,7 +3546,7 @@
           return;
         }
 
-        applyHighScores(data.highScore, data.highScore2P, false);
+        applyHighScores(data.highScore, data.highScore2P, false, data.totalCoins);
       })
       .catch(() => {
         setAccountStatus("ハイスコアの同期に失敗しました", "error");
@@ -3556,10 +3644,12 @@
       loggedInUsername = null;
       localStorage.removeItem(HIGH_SCORE_KEY);
       localStorage.removeItem(HIGH_SCORE_2P_KEY);
+      localStorage.removeItem(TOTAL_COINS_KEY);
       highScore1P = 0;
       highScore2P = 0;
       highScore = 0;
       highScoreAtStart = 0;
+      totalCoins = 0;
       score = 0;
       score2 = 0;
       updateAccountView();

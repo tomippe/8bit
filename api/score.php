@@ -18,7 +18,8 @@ function userScores(array $user): array
 {
     return [
         'highScore' => (int) ($user['highScore'] ?? 0),
-        'highScore2P' => (int) ($user['highScore2P'] ?? 0)
+        'highScore2P' => (int) ($user['highScore2P'] ?? 0),
+        'totalCoins' => (int) ($user['totalCoins'] ?? 0)
     ];
 }
 
@@ -34,12 +35,16 @@ if ($method === 'POST') {
     $incoming2P = array_key_exists('highScore2P', $body)
         ? (int) $body['highScore2P']
         : null;
+    $incomingCoins = array_key_exists('totalCoins', $body)
+        ? (int) $body['totalCoins']
+        : null;
 
     if (
         ($incoming1P !== null && $incoming1P < 0) ||
-        ($incoming2P !== null && $incoming2P < 0)
+        ($incoming2P !== null && $incoming2P < 0) ||
+        ($incomingCoins !== null && $incomingCoins < 0)
     ) {
-        respondError('ハイスコアが不正です');
+        respondError('スコアが不正です');
     }
 
     $scores = userScores($users[$username]);
@@ -52,6 +57,11 @@ if ($method === 'POST') {
     if ($incoming2P !== null) {
         $scores['highScore2P'] = max($scores['highScore2P'], $incoming2P);
         $users[$username]['highScore2P'] = $scores['highScore2P'];
+    }
+
+    if ($incomingCoins !== null) {
+        $scores['totalCoins'] = max($scores['totalCoins'], $incomingCoins);
+        $users[$username]['totalCoins'] = $scores['totalCoins'];
     }
 
     if (array_key_exists('rankingEnabled', $body)) {
@@ -69,12 +79,14 @@ if ($method === 'POST') {
 if ($method === 'DELETE') {
     $users[$username]['highScore'] = 0;
     $users[$username]['highScore2P'] = 0;
+    $users[$username]['totalCoins'] = 0;
     saveUsers($users);
 
     respond([
         'ok' => true,
         'highScore' => 0,
-        'highScore2P' => 0
+        'highScore2P' => 0,
+        'totalCoins' => 0
     ]);
 }
 

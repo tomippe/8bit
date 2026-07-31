@@ -14,6 +14,7 @@ $users = loadUsers();
 $limit = 50;
 $ranking1P = [];
 $ranking2P = [];
+$rankingCoins = [];
 
 foreach ($users as $username => $user) {
     if (!is_array($user) || !is_string($username) || $username === '') {
@@ -26,6 +27,7 @@ foreach ($users as $username => $user) {
 
     $highScore = (int) ($user['highScore'] ?? 0);
     $highScore2P = (int) ($user['highScore2P'] ?? 0);
+    $totalCoins = (int) ($user['totalCoins'] ?? 0);
 
     if ($highScore > 0) {
         $ranking1P[] = [
@@ -40,6 +42,13 @@ foreach ($users as $username => $user) {
             'highScore' => $highScore2P
         ];
     }
+
+    if ($totalCoins > 0) {
+        $rankingCoins[] = [
+            'username' => $username,
+            'totalCoins' => $totalCoins
+        ];
+    }
 }
 
 usort($ranking1P, static function (array $a, array $b): int {
@@ -52,9 +61,15 @@ usort($ranking2P, static function (array $a, array $b): int {
         ?: strcmp($a['username'], $b['username']);
 });
 
+usort($rankingCoins, static function (array $a, array $b): int {
+    return $b['totalCoins'] <=> $a['totalCoins']
+        ?: strcmp($a['username'], $b['username']);
+});
+
 respond([
     'ok' => true,
     'ranking1P' => array_slice($ranking1P, 0, $limit),
     'ranking2P' => array_slice($ranking2P, 0, $limit),
+    'rankingCoins' => array_slice($rankingCoins, 0, $limit),
     'updatedAt' => time()
 ]);
