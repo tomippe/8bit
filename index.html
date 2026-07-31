@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.42">
+  <meta name="app-version" content="1.0.43">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -237,8 +237,7 @@
       font-size: 12px;
     }
 
-    .ranking-panel,
-    .live-panel {
+    .ranking-panel {
       margin-top: 20px;
       max-width: 640px;
       width: 95vw;
@@ -247,8 +246,7 @@
       padding-top: 12px;
     }
 
-    .ranking-panel h2,
-    .live-panel h2 {
+    .ranking-panel h2 {
       margin: 0 0 10px;
       font-size: 16px;
       letter-spacing: 1px;
@@ -272,14 +270,12 @@
       color: black;
     }
 
-    .rank-list,
-    .live-list {
+    .rank-list {
       max-height: 280px;
       overflow-y: auto;
     }
 
-    .rank-item,
-    .live-item {
+    .rank-item {
       display: flex;
       align-items: baseline;
       gap: 8px;
@@ -289,8 +285,7 @@
       line-height: 1.5;
     }
 
-    .rank-item.me,
-    .live-item.me {
+    .rank-item.me {
       color: #7ef9ff;
     }
 
@@ -300,8 +295,7 @@
       color: #aaa;
     }
 
-    .rank-name,
-    .live-name {
+    .rank-name {
       flex: 1;
       min-width: 0;
       overflow: hidden;
@@ -309,24 +303,15 @@
       white-space: nowrap;
     }
 
-    .rank-score,
-    .live-scores {
+    .rank-score {
       flex-shrink: 0;
       color: #ffcc00;
     }
 
-    .live-scores .hi {
-      color: #70c8ff;
-      margin-right: 8px;
-    }
-
-    .live-scores .cur {
-      color: #ffcc00;
-    }
-
-    .live-meta {
+    .ranking-meta {
       color: #777;
       font-size: 11px;
+      margin-bottom: 8px;
     }
 
     .settings-panel {
@@ -595,19 +580,12 @@
 
   <div class="ranking-panel">
     <h2>世界ランキング（ハイスコア）</h2>
+    <div class="ranking-meta" id="worldRankingMeta">自動更新中</div>
     <div class="ranking-tabs">
       <button type="button" id="ranking1PButton" class="active">1P HI</button>
       <button type="button" id="ranking2PButton">2P HI</button>
     </div>
     <div id="worldRankingList" class="rank-list">
-      <div class="history-empty">読み込み中...</div>
-    </div>
-  </div>
-
-  <div class="live-panel">
-    <h2>コイン獲得数ランキング</h2>
-    <div class="live-meta" id="liveScoreMeta">いまのコイン獲得数を自動更新</div>
-    <div id="liveScoreList" class="live-list">
       <div class="history-empty">読み込み中...</div>
     </div>
   </div>
@@ -684,8 +662,7 @@
   const historyPanel = document.getElementById("historyPanel");
   const historyList = document.getElementById("historyList");
   const worldRankingList = document.getElementById("worldRankingList");
-  const liveScoreList = document.getElementById("liveScoreList");
-  const liveScoreMeta = document.getElementById("liveScoreMeta");
+  const worldRankingMeta = document.getElementById("worldRankingMeta");
   const ranking1PButton = document.getElementById("ranking1PButton");
   const ranking2PButton = document.getElementById("ranking2PButton");
   const difficultyEasyButton = document.getElementById("difficultyEasyButton");
@@ -799,10 +776,8 @@
   let playHistory = [];
   let worldRanking1P = [];
   let worldRanking2P = [];
-  let liveScores = [];
   let rankingMode = "1p";
   let onlinePollTimer = null;
-  let lastLivePushAt = 0;
   let timeFormat = localStorage.getItem(TIME_FORMAT_KEY) === "12" ? "12" : "24";
   let showAmPm = localStorage.getItem(SHOW_AMPM_KEY) !== "0";
   let soundEnabled = localStorage.getItem(SOUND_ENABLED_KEY) !== "0";
@@ -1217,7 +1192,7 @@
 
     return Boolean(
       target.closest(
-        "button, input, select, textarea, label, a, .settings-panel, .account-bar, .history-panel, .ranking-panel, .live-panel, .info, .touch-controls"
+        "button, input, select, textarea, label, a, .settings-panel, .account-bar, .history-panel, .ranking-panel, .info, .touch-controls"
       )
     );
   }
@@ -3314,32 +3289,6 @@
       .join("");
   }
 
-  function renderLiveScores() {
-    if (!liveScores.length) {
-      liveScoreList.innerHTML =
-        '<div class="history-empty">いまコイン獲得中の人はいません</div>';
-      liveScoreMeta.textContent = "いまのコイン獲得数を自動更新";
-      return;
-    }
-
-    liveScoreMeta.textContent = `プレイ中 ${liveScores.length}人　自動更新中`;
-    liveScoreList.innerHTML = liveScores
-      .map((entry, index) => {
-        const isMe = loggedInUsername && entry.username === loggedInUsername;
-        const modeLabel = entry.mode === "2p" ? "2P" : "1P";
-        return `
-          <div class="live-item${isMe ? " me" : ""}">
-            <span class="rank-pos">${index + 1}</span>
-            <span class="live-name">[${modeLabel}] ${escapeHtml(entry.username)}</span>
-            <span class="live-scores">
-              <span class="cur">COIN ${entry.currentScore}</span>
-            </span>
-          </div>
-        `;
-      })
-      .join("");
-  }
-
   async function fetchWorldRanking() {
     try {
       const data = await apiRequest("ranking.php", { method: "GET" });
@@ -3350,78 +3299,28 @@
 
       worldRanking1P = Array.isArray(data.ranking1P) ? data.ranking1P : [];
       worldRanking2P = Array.isArray(data.ranking2P) ? data.ranking2P : [];
+      worldRankingMeta.textContent = `自動更新中　${new Date().toLocaleTimeString("ja-JP")}`;
       renderWorldRanking();
     } catch (error) {
       // ignore transient network errors
     }
   }
 
-  async function fetchLiveScores() {
-    try {
-      const data = await apiRequest("live.php", { method: "GET" });
-
-      if (!data.ok) {
-        return;
-      }
-
-      liveScores = Array.isArray(data.live) ? data.live : [];
-      renderLiveScores();
-    } catch (error) {
-      // ignore transient network errors
-    }
-  }
-
-  async function pushLiveScore(force = false) {
+  async function syncRankingPreference() {
     if (!loggedInUsername) {
       return;
     }
 
-    const now = Date.now();
-
-    if (!force && now - lastLivePushAt < 1500) {
-      return;
-    }
-
-    lastLivePushAt = now;
-
-    const currentScore = twoPlayerMode ? score + score2 : score;
-
     try {
-      const data = await apiRequest("live.php", {
+      await apiRequest("score.php", {
         method: "POST",
         body: JSON.stringify({
-          currentScore,
           highScore: highScore1P,
           highScore2P: highScore2P,
-          mode: twoPlayerMode ? "2p" : "1p",
           rankingEnabled
         })
       });
-
-      if (!data.ok) {
-        return;
-      }
-
-      if (Array.isArray(data.live)) {
-        liveScores = data.live;
-        renderLiveScores();
-      }
-
-      if (data.highScore !== undefined || data.highScore2P !== undefined) {
-        applyHighScores(data.highScore, data.highScore2P, false);
-      }
-    } catch (error) {
-      // ignore transient network errors
-    }
-  }
-
-  async function clearLiveScore() {
-    if (!loggedInUsername) {
-      return;
-    }
-
-    try {
-      await apiRequest("live.php", { method: "DELETE" });
+      await fetchWorldRanking();
     } catch (error) {
       // ignore
     }
@@ -3429,11 +3328,11 @@
 
   async function refreshOnlineBoards() {
     if (loggedInUsername) {
-      await Promise.all([fetchWorldRanking(), pushLiveScore(true)]);
+      await syncRankingPreference();
       return;
     }
 
-    await Promise.all([fetchWorldRanking(), fetchLiveScores()]);
+    await fetchWorldRanking();
   }
 
   function startOnlinePolling() {
@@ -3441,10 +3340,10 @@
       return;
     }
 
-    refreshOnlineBoards();
+    fetchWorldRanking();
 
     onlinePollTimer = window.setInterval(() => {
-      refreshOnlineBoards();
+      fetchWorldRanking();
     }, 2000);
   }
 
@@ -3615,8 +3514,6 @@
     setAccountStatus("通信中...");
 
     try {
-      await clearLiveScore();
-
       const data = await apiRequest("auth.php?action=logout", {
         method: "POST",
         body: "{}"
@@ -3631,7 +3528,7 @@
       playHistory = [];
       updateAccountView();
       renderWorldRanking();
-      fetchLiveScores();
+      fetchWorldRanking();
       setAccountStatus("ログアウトしました", "ok");
     } catch (error) {
       setAccountStatus("サーバーに接続できませんでした", "error");
@@ -3646,8 +3543,6 @@
     setAccountStatus("通信中...");
 
     try {
-      await clearLiveScore();
-
       const data = await apiRequest("auth.php?action=delete", {
         method: "POST",
         body: "{}"
@@ -3669,7 +3564,7 @@
       score2 = 0;
       updateAccountView();
       renderWorldRanking();
-      fetchLiveScores();
+      fetchWorldRanking();
       setAccountStatus("アカウントを削除しました", "ok");
       restartGame();
     } catch (error) {
@@ -3813,13 +3708,13 @@
   rankingOnButton.addEventListener("click", () => {
     rankingEnabled = true;
     saveTimeSettings();
-    refreshOnlineBoards();
+    syncRankingPreference();
   });
 
   rankingOffButton.addEventListener("click", () => {
     rankingEnabled = false;
     saveTimeSettings();
-    refreshOnlineBoards();
+    syncRankingPreference();
   });
 
   accountToggleButton.addEventListener("click", () => {
