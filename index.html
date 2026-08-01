@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.45">
+  <meta name="app-version" content="1.0.46">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1224,19 +1224,15 @@
   }
 
   function beginGameFromGesture() {
-    unlockAudio().then((ctxAudio) => {
-      if (!ctxAudio || ctxAudio.state !== "running") {
-        return;
-      }
+    unlockAudio();
 
-      if (!needsStartGesture) {
-        return;
-      }
+    if (!needsStartGesture) {
+      return;
+    }
 
-      needsStartGesture = false;
-      updateTouchStartButtonVisibility();
-      beginCountdown();
-    });
+    needsStartGesture = false;
+    updateTouchStartButtonVisibility();
+    beginCountdown();
   }
 
   function updateTouchStartButtonVisibility() {
@@ -1257,23 +1253,17 @@
   }
 
   function onUserGestureForAudio(event) {
-    unlockAudio().then((ctxAudio) => {
-      if (!ctxAudio || ctxAudio.state !== "running") {
-        return;
-      }
+    unlockAudio();
 
-      if (!needsStartGesture) {
-        return;
-      }
+    if (!needsStartGesture) {
+      return;
+    }
 
-      if (event && isUiGestureTarget(event.target)) {
-        return;
-      }
+    if (event && isUiGestureTarget(event.target)) {
+      return;
+    }
 
-      needsStartGesture = false;
-      updateTouchStartButtonVisibility();
-      beginCountdown();
-    });
+    beginGameFromGesture();
   }
 
   window.addEventListener("pointerdown", onUserGestureForAudio);
