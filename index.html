@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.48">
+  <meta name="app-version" content="1.0.49">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
@@ -476,6 +476,18 @@
     .touch-start-button.active {
       background: white;
       color: black;
+    }
+
+    body.playing .account-bar,
+    body.playing h1,
+    body.playing .info,
+    body.playing #restartButton,
+    body.playing #twoPlayerButton,
+    body.playing #clearDataButton,
+    body.playing .history-panel,
+    body.playing .ranking-panel,
+    body.playing .settings-panel {
+      display: none;
     }
 
     .touch-actions {
@@ -1234,12 +1246,18 @@
 
     needsStartGesture = false;
     updateTouchStartButtonVisibility();
+    updatePlayingUi();
     beginCountdown();
   }
 
   function updateTouchStartButtonVisibility() {
     const visible = needsStartGesture && shouldShowTouchControls();
     touchStartButton.classList.toggle("visible", visible);
+  }
+
+  function updatePlayingUi() {
+    const playing = !needsStartGesture && !gameOver;
+    document.body.classList.toggle("playing", playing);
   }
 
   function isUiGestureTarget(target) {
@@ -1711,6 +1729,20 @@
   }
 
   updateTouchControlsVisibility();
+
+  ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
+    document.addEventListener(eventName, (event) => event.preventDefault());
+  });
+
+  document.addEventListener(
+    "touchmove",
+    (event) => {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    },
+    { passive: false }
+  );
 
   function pauseForBackground() {
     if (gameOver || confirmingClearData || paused || needsStartGesture) {
@@ -2758,6 +2790,7 @@
     stopBgm();
     playSound("gameOver");
     recordPlayHistory();
+    updatePlayingUi();
   }
 
   /*
@@ -3253,6 +3286,8 @@
     } else {
       beginCountdown();
     }
+
+    updatePlayingUi();
   }
 
   /*
