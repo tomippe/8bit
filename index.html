@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.43">
+  <meta name="app-version" content="1.0.45">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -455,6 +455,27 @@
     .touch-btn-right { grid-column: 3; grid-row: 2; }
     .touch-btn-down { grid-column: 2; grid-row: 3; }
 
+    .touch-start-button {
+      display: none;
+      margin: 10px auto 0;
+      padding: 12px 18px;
+      font-size: 14px;
+      background: rgba(34, 34, 34, 0.9);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body.has-touch-controls .touch-start-button.visible {
+      display: block;
+    }
+
+    .touch-start-button:active,
+    .touch-start-button.active {
+      background: white;
+      color: black;
+    }
+
     .touch-actions {
       pointer-events: auto;
       display: flex;
@@ -571,6 +592,10 @@
     </div>
   </div>
 
+  <button type="button" id="touchStartButton" class="touch-start-button">
+    TAP TO START
+  </button>
+
   <div id="historyPanel" class="history-panel">
     <h2>履歴</h2>
     <div id="historyList" class="history-list">
@@ -653,6 +678,7 @@
   const clearDataButton = document.getElementById("clearDataButton");
   const touchControls = document.getElementById("touchControls");
   const touchPauseButton = document.getElementById("touchPauseButton");
+  const touchStartButton = document.getElementById("touchStartButton");
   const accountToggleButton = document.getElementById("accountToggleButton");
   const usernameInput = document.getElementById("usernameInput");
   const passwordInput = document.getElementById("passwordInput");
@@ -1197,6 +1223,27 @@
     tickBgm();
   }
 
+  function beginGameFromGesture() {
+    unlockAudio().then((ctxAudio) => {
+      if (!ctxAudio || ctxAudio.state !== "running") {
+        return;
+      }
+
+      if (!needsStartGesture) {
+        return;
+      }
+
+      needsStartGesture = false;
+      updateTouchStartButtonVisibility();
+      beginCountdown();
+    });
+  }
+
+  function updateTouchStartButtonVisibility() {
+    const visible = needsStartGesture && shouldShowTouchControls();
+    touchStartButton.classList.toggle("visible", visible);
+  }
+
   function isUiGestureTarget(target) {
     if (!target || !target.closest) {
       return false;
@@ -1224,6 +1271,7 @@
       }
 
       needsStartGesture = false;
+      updateTouchStartButtonVisibility();
       beginCountdown();
     });
   }
@@ -1374,7 +1422,12 @@
       event.preventDefault();
     }
 
-    if (event.key === " " && gameOver && !confirmingClearData) {
+    if (
+      event.key === " " &&
+      gameOver &&
+      !confirmingClearData &&
+      !needsStartGesture
+    ) {
       restartGame();
     }
 
@@ -1450,6 +1503,7 @@
     touchControls.classList.toggle("two-player", twoPlayerMode);
     touchControls.setAttribute("aria-hidden", show ? "false" : "true");
     document.body.classList.toggle("has-touch-controls", show);
+    updateTouchStartButtonVisibility();
 
     if (!show) {
       clearMovementKeys();
@@ -1492,6 +1546,11 @@
         button.setPointerCapture(event.pointerId);
       }
 
+      if (needsStartGesture) {
+        beginGameFromGesture();
+        return;
+      }
+
       setPressed(true);
     };
 
@@ -1514,10 +1573,22 @@
   touchPauseButton.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     event.stopPropagation();
+
+    if (needsStartGesture) {
+      beginGameFromGesture();
+      return;
+    }
+
     togglePause();
   });
 
-  touchPauseButton.addEventListener("contextmenu", (event) => {
+  touchStartButton.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    beginGameFromGesture();
+  });
+
+  touchStartButton.addEventListener("contextmenu", (event) => {
     event.preventDefault();
   });
 
@@ -1574,7 +1645,7 @@
   });
 
   twoPlayerButton.addEventListener("click", () => {
-    if (confirmingClearData) {
+    if (confirmingClearData || needsStartGesture) {
       return;
     }
 
@@ -1587,6 +1658,15 @@
 
   clearDataButton.addEventListener("click", () => {
     confirmingClearData = true;
+  });
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (confirmingClearData || !needsStartGesture) {
+      return;
+    }
+
+    event.preventDefault();
+    beginGameFromGesture();
   });
 
   canvas.addEventListener("click", (event) => {
