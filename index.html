@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.53">
+  <meta name="app-version" content="1.0.54">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
@@ -649,6 +649,7 @@
       <button type="button" id="difficultyHardButton">HARD</button>
     </div>
     <div class="settings-desc">
+      EASY協力: どちらも死んでも10秒後に復活。両方死んだら終了<br>
       協力: 1Pが死んだら終了。2Pは死んでも10秒後に復活<br>
       対戦: どちらかが死んだら終了。生き残った方が勝ち<br>
       対戦2: どちらかが死んだら終了。コイン獲得数が多い方が勝ち<br>
@@ -656,6 +657,7 @@
     </div>
     <div class="settings-row">
       <label>2Pモード</label>
+      <button type="button" id="modeEasyCoopButton">EASY協力</button>
       <button type="button" id="modeCoopButton">協力</button>
       <button type="button" id="modeVersusButton">対戦</button>
       <button type="button" id="modeVersus2Button">対戦2</button>
@@ -730,6 +732,7 @@
     "difficultyNormalButton"
   );
   const difficultyHardButton = document.getElementById("difficultyHardButton");
+  const modeEasyCoopButton = document.getElementById("modeEasyCoopButton");
   const modeCoopButton = document.getElementById("modeCoopButton");
   const modeVersusButton = document.getElementById("modeVersusButton");
   const modeVersus2Button = document.getElementById("modeVersus2Button");
@@ -787,6 +790,7 @@
       value === "versus" ||
       value === "versus2" ||
       value === "hardcoop" ||
+      value === "easycoop" ||
       value === "coop"
     ) {
       return value;
@@ -831,6 +835,7 @@
   );
   let hitPoints = DIFFICULTY_HITS[difficulty];
   let hitPoints2 = DIFFICULTY_HITS[difficulty];
+  let reviveRemainingMs = 0;
   let reviveRemainingMs2 = 0;
   let versusWinner = null;
   let loggedInUsername = null;
@@ -2606,6 +2611,7 @@
     difficultyEasyButton.classList.toggle("active", difficulty === "easy");
     difficultyNormalButton.classList.toggle("active", difficulty === "normal");
     difficultyHardButton.classList.toggle("active", difficulty === "hard");
+    modeEasyCoopButton.classList.toggle("active", twoPlayerRule === "easycoop");
     modeCoopButton.classList.toggle("active", twoPlayerRule === "coop");
     modeVersusButton.classList.toggle("active", twoPlayerRule === "versus");
     modeVersus2Button.classList.toggle("active", twoPlayerRule === "versus2");
@@ -2690,6 +2696,7 @@
     hitPoints2 = maxHitPoints();
     damageIframeMs = 0;
     damageIframeMs2 = 0;
+    reviveRemainingMs = 0;
     reviveRemainingMs2 = 0;
     versusWinner = null;
   }
@@ -2723,6 +2730,10 @@
       return "HARD協力";
     }
 
+    if (key === "easycoop") {
+      return "EASY協力";
+    }
+
     return "協力";
   }
 
@@ -2731,6 +2742,18 @@
     invincibleRemainingMs2 = 0;
     damageIframeMs2 = 0;
     reviveRemainingMs2 = COOP_REVIVE_MS;
+  }
+
+  function startEasyCoopRevive(target) {
+    if (target === player2) {
+      startCoopReviveP2();
+      return;
+    }
+
+    hitPoints = 0;
+    invincibleRemainingMs = 0;
+    damageIframeMs = 0;
+    reviveRemainingMs = COOP_REVIVE_MS;
   }
 
   function applyEnemyDamage(target) {
@@ -2759,6 +2782,18 @@
       }
 
       startCoopReviveP2();
+      return;
+    }
+
+    if (twoPlayerRule === "easycoop") {
+      const other = target === player ? player2 : player;
+
+      if (!isPlayerAlive(other)) {
+        triggerGameOver();
+        return;
+      }
+
+      startEasyCoopRevive(target);
       return;
     }
 
@@ -2847,7 +2882,12 @@
       drawLeft(`SC ${score}`, "white");
       drawLeft(`2PSC ${score2}`, "#81c784");
       drawLeft(`TOT ${total}`, "#ffcc00");
-      drawLeft(`L1 ${hitPoints}`, "#ff706b");
+
+      if (reviveRemainingMs > 0) {
+        drawLeft(`R${Math.ceil(reviveRemainingMs / 1000)}`, "#ff706b");
+      } else {
+        drawLeft(`L1 ${hitPoints}`, "#ff706b");
+      }
 
       if (invincibleRemainingMs > 0) {
         drawLeft(`${Math.ceil(invincibleRemainingMs / 1000)}`, "#7ef9ff");
@@ -3176,7 +3216,21 @@
 
     if (
       twoPlayerMode &&
-      twoPlayerRule === "coop" &&
+      twoPlayerRule === "easycoop" &&
+      reviveRemainingMs > 0
+    ) {
+      reviveRemainingMs = Math.max(0, reviveRemainingMs - deltaMs);
+
+      if (reviveRemainingMs <= 0) {
+        hitPoints = maxHitPoints();
+        damageIframeMs = HIT_IFRAME_MS;
+        playSound("healGet");
+      }
+    }
+
+    if (
+      twoPlayerMode &&
+      (twoPlayerRule === "coop" || twoPlayerRule === "easycoop") &&
       reviveRemainingMs2 > 0
     ) {
       reviveRemainingMs2 = Math.max(0, reviveRemainingMs2 - deltaMs);
@@ -3975,6 +4029,10 @@
 
   difficultyHardButton.addEventListener("click", () => {
     setDifficulty("hard");
+  });
+
+  modeEasyCoopButton.addEventListener("click", () => {
+    setTwoPlayerRule("easycoop");
   });
 
   modeCoopButton.addEventListener("click", () => {
