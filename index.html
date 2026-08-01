@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta name="app-version" content="1.0.47">
+  <meta name="app-version" content="1.0.48">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
@@ -383,6 +383,7 @@
       align-items: flex-end;
       pointer-events: none;
       gap: 12px;
+      touch-action: none;
     }
 
     .touch-controls.visible {
@@ -1457,6 +1458,8 @@
   }
 
   function clearTouchButtonActiveState() {
+    activeTouchPointers.clear();
+
     touchControls
       .querySelectorAll("button.active")
       .forEach((button) => button.classList.remove("active"));
@@ -1487,6 +1490,125 @@
     return isTouchPrimaryDevice() && !physicalKeyboardConnected;
   }
 
+  const activeTouchPointers = new Map();
+  const TOUCH_SLIDE_MARGIN_PX = 10;
+
+  function getTouchKeyNames(button) {
+    return (button.getAttribute("data-keys") || "")
+      .split(",")
+      .map((key) => key.trim())
+      .filter(Boolean);
+  }
+
+  function touchButtonsAtPoint(clientX, clientY) {
+    const found = [];
+
+    touchControls
+      .querySelectorAll("button[data-keys]")
+      .forEach((button) => {
+        const rect = button.getBoundingClientRect();
+
+        if (
+          clientX >= rect.left - TOUCH_SLIDE_MARGIN_PX &&
+          clientX <= rect.right + TOUCH_SLIDE_MARGIN_PX &&
+          clientY >= rect.top - TOUCH_SLIDE_MARGIN_PX &&
+          clientY <= rect.bottom + TOUCH_SLIDE_MARGIN_PX
+        ) {
+          found.push(button);
+        }
+      });
+
+    return found;
+  }
+
+  function setTouchButtonPressed(button, pressed, pointerId) {
+    for (const keyName of getTouchKeyNames(button)) {
+      if (pressed) {
+        keys[keyName] = true;
+        continue;
+      }
+
+      let heldByOthers = false;
+
+      for (const [otherId, buttons] of activeTouchPointers) {
+        if (otherId === pointerId) {
+          continue;
+        }
+
+        for (const otherButton of buttons) {
+          if (getTouchKeyNames(otherButton).includes(keyName)) {
+            heldByOthers = true;
+            break;
+          }
+        }
+
+        if (heldByOthers) {
+          break;
+        }
+      }
+
+      if (!heldByOthers) {
+        keys[keyName] = false;
+      }
+    }
+
+    if (pressed) {
+      button.classList.add("active");
+      return;
+    }
+
+    let buttonHeldByOthers = false;
+
+    for (const [otherId, buttons] of activeTouchPointers) {
+      if (otherId !== pointerId && buttons.has(button)) {
+        buttonHeldByOthers = true;
+        break;
+      }
+    }
+
+    if (!buttonHeldByOthers) {
+      button.classList.remove("active");
+    }
+  }
+
+  function updateTouchPointer(event) {
+    if (!activeTouchPointers.has(event.pointerId)) {
+      return;
+    }
+
+    const previousButtons = activeTouchPointers.get(event.pointerId);
+    const nextButtons = new Set(
+      touchButtonsAtPoint(event.clientX, event.clientY)
+    );
+
+    for (const button of previousButtons) {
+      if (!nextButtons.has(button)) {
+        setTouchButtonPressed(button, false, event.pointerId);
+      }
+    }
+
+    activeTouchPointers.set(event.pointerId, nextButtons);
+
+    for (const button of nextButtons) {
+      if (!previousButtons.has(button)) {
+        setTouchButtonPressed(button, true, event.pointerId);
+      }
+    }
+  }
+
+  function releaseTouchPointer(pointerId) {
+    if (!activeTouchPointers.has(pointerId)) {
+      return;
+    }
+
+    const buttons = activeTouchPointers.get(pointerId);
+    activeTouchPointers.delete(pointerId);
+
+    for (const button of buttons) {
+      setTouchButtonPressed(button, false, pointerId);
+    }
+  }
+
   function updateTouchControlsVisibility() {
     const show = shouldShowTouchControls();
 
@@ -1512,50 +1634,42 @@
   }
 
   function bindTouchKeyButton(button) {
-    const keyNames = (button.getAttribute("data-keys") || "")
-      .split(",")
-      .map((key) => key.trim())
-      .filter(Boolean);
-
-    if (!keyNames.length) {
-      return;
-    }
-
-    const setPressed = (pressed) => {
-      for (const keyName of keyNames) {
-        keys[keyName] = pressed;
-      }
-
-      button.classList.toggle("active", pressed);
-    };
-
-    const onDown = (event) => {
+    button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
-
-      if (event.pointerId !== undefined) {
-        button.setPointerCapture(event.pointerId);
-      }
 
       if (needsStartGesture) {
         beginGameFromGesture();
         return;
       }
 
-      setPressed(true);
-    };
+      if (event.pointerId === undefined) {
+        return;
+      }
 
-    const onUp = (event) => {
-      event.preventDefault();
-      setPressed(false);
-    };
+      releaseTouchPointer(event.pointerId);
+      activeTouchPointers.set(event.pointerId, new Set([button]));
+      setTouchButtonPressed(button, true, event.pointerId);
+    });
 
-    button.addEventListener("pointerdown", onDown);
-    button.addEventListener("pointerup", onUp);
-    button.addEventListener("pointercancel", onUp);
-    button.addEventListener("lostpointercapture", () => setPressed(false));
     button.addEventListener("contextmenu", (event) => event.preventDefault());
   }
+
+  window.addEventListener("pointermove", (event) => {
+    if (event.pointerId === undefined) {
+      return;
+    }
+
+    updateTouchPointer(event);
+  });
+
+  window.addEventListener("pointerup", (event) => {
+    releaseTouchPointer(event.pointerId);
+  });
+
+  window.addEventListener("pointercancel", (event) => {
+    releaseTouchPointer(event.pointerId);
+  });
 
   touchControls
     .querySelectorAll("button[data-keys]")
